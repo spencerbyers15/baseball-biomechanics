@@ -262,6 +262,133 @@ class SegmentationMask(Base):
         return f"<SegmentationMask(mask_id={self.mask_id}, role={self.player_role.value}, prompt='{self.text_prompt_used}')>"
 
 
+class BallPosition(Base):
+    """
+    Represents detected baseball position in a frame.
+
+    Stores per-frame centroid coordinates from YOLO detection.
+    """
+    __tablename__ = "ball_positions"
+
+    position_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    play_id: Mapped[int] = mapped_column(Integer, ForeignKey("plays.play_id"), nullable=False, index=True)
+    frame_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    timestamp_ms: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Centroid position (pixels)
+    x: Mapped[float] = mapped_column(Float, nullable=False)
+    y: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Bounding box (optional, for reference)
+    bbox_x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    bbox_y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    bbox_width: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    bbox_height: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Detection metadata
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    detection_model: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    play: Mapped["Play"] = relationship("Play", backref="ball_positions")
+
+    __table_args__ = (
+        Index("idx_ball_play_frame", "play_id", "frame_number"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<BallPosition(play_id={self.play_id}, frame={self.frame_number}, pos=({self.x:.1f}, {self.y:.1f}), conf={self.confidence:.2f})>"
+
+
+class BatPosition(Base):
+    """
+    Represents detected bat keypoints in a frame.
+
+    Stores knob (handle) and cap (barrel) endpoint coordinates.
+    """
+    __tablename__ = "bat_positions"
+
+    position_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    play_id: Mapped[int] = mapped_column(Integer, ForeignKey("plays.play_id"), nullable=False, index=True)
+    frame_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    timestamp_ms: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Knob (handle end) keypoint
+    knob_x: Mapped[float] = mapped_column(Float, nullable=False)
+    knob_y: Mapped[float] = mapped_column(Float, nullable=False)
+    knob_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Cap (barrel end) keypoint
+    cap_x: Mapped[float] = mapped_column(Float, nullable=False)
+    cap_y: Mapped[float] = mapped_column(Float, nullable=False)
+    cap_confidence: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Derived metrics (computed on insert)
+    bat_angle: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Degrees from horizontal
+    bat_length_px: Mapped[Optional[float]] = mapped_column(Float, nullable=True)  # Length in pixels
+
+    # Detection metadata
+    detection_model: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    play: Mapped["Play"] = relationship("Play", backref="bat_positions")
+
+    __table_args__ = (
+        Index("idx_bat_play_frame", "play_id", "frame_number"),
+    )
+
+    def __repr__(self) -> str:
+        angle = f"{self.bat_angle:.1f}°" if self.bat_angle else "N/A"
+        return f"<BatPosition(play_id={self.play_id}, frame={self.frame_number}, angle={angle})>"
+
+
+class HomePlateLocation(Base):
+    """
+    Represents detected home plate location for a video/play.
+
+    Only one detection per play since home plate is static.
+    Stores centroid and corner coordinates.
+    """
+    __tablename__ = "home_plate_locations"
+
+    location_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    play_id: Mapped[int] = mapped_column(Integer, ForeignKey("plays.play_id"), nullable=False, unique=True, index=True)
+
+    # Centroid position (pixels)
+    centroid_x: Mapped[float] = mapped_column(Float, nullable=False)
+    centroid_y: Mapped[float] = mapped_column(Float, nullable=False)
+
+    # Pentagon corners as JSON array: [[x1,y1], [x2,y2], ...]
+    corners_json: Mapped[str] = mapped_column(Text, nullable=False)
+
+    # Optional mask path
+    mask_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # Detection metadata
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    detection_model: Mapped[str] = mapped_column(String(50), nullable=False)
+    frame_number: Mapped[int] = mapped_column(Integer, nullable=False)  # Frame used for detection
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Relationships
+    play: Mapped["Play"] = relationship("Play", backref="home_plate_location", uselist=False)
+
+    def __repr__(self) -> str:
+        return f"<HomePlateLocation(play_id={self.play_id}, centroid=({self.centroid_x:.1f}, {self.centroid_y:.1f}))>"
+
+    def get_corners(self) -> list:
+        """Parse corners from JSON."""
+        import json
+        return json.loads(self.corners_json)
+
+    def set_corners(self, corners: list) -> None:
+        """Set corners as JSON."""
+        import json
+        self.corners_json = json.dumps(corners)
+
+
 # Standard keypoint names for reference
 MEDIAPIPE_KEYPOINT_NAMES = [
     "nose", "left_eye_inner", "left_eye", "left_eye_outer",
