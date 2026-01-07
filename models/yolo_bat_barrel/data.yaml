@@ -1,0 +1,25 @@
+# YOLOv8 Pose Dataset Configuration for Bat Barrel Detection
+# 3-keypoint skeleton: barrel_cap -> barrel_middle -> barrel_beginning
+# Auto-generated: 2026-01-07T12:25:27.190650
+
+# Dataset paths
+path: F:\Claude_Projects\baseball-biomechanics\data\labels\bat_barrel
+train: images/train
+val: images/val
+
+# Class names
+names:
+  0: bat
+
+# Keypoint configuration
+kpt_shape: [3, 3]  # [num_keypoints, dimensions] - 3 keypoints with (x, y, visibility)
+
+# Keypoint names (for reference)
+# 0: barrel_cap - end of bat
+# 1: barrel_middle - middle of barrel
+# 2: barrel_beginning - where barrel meets handle
+
+# Skeleton connections for visualization
+skeleton:
+  - [0, 1]  # cap to middle
+  - [1, 2]  # middle to beginning

@@ -1,0 +1,358 @@
+{
+  "metadata": {
+    "description": "Frames flagged as wrong camera angle for debugging",
+    "created": "2026-01-07T12:23:08.090017"
+  },
+  "flagged": [
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Angel_Stadium_LAA_ATH_716371_34_1_f0294.jpg",
+      "source_video": "Angel_Stadium_LAA_ATH_716371_34.mp4",
+      "stadium": "Angel_Stadium_LAA_ATH",
+      "game_pk": "34",
+      "timestamp": "2026-01-07T11:48:09.071055"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Angel_Stadium_LAA_ATH_716371_34_1_f0309.jpg",
+      "source_video": "Angel_Stadium_LAA_ATH_716371_34.mp4",
+      "stadium": "Angel_Stadium_LAA_ATH",
+      "game_pk": "34",
+      "timestamp": "2026-01-07T11:48:10.171842"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Angel_Stadium_LAA_ATH_716371_34_1_f0503.jpg",
+      "source_video": "Angel_Stadium_LAA_ATH_716371_34.mp4",
+      "stadium": "Angel_Stadium_LAA_ATH",
+      "game_pk": "34",
+      "timestamp": "2026-01-07T11:48:10.971965"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Angel_Stadium_LAA_ATH_716371_34_1_f0588.jpg",
+      "source_video": "Angel_Stadium_LAA_ATH_716371_34.mp4",
+      "stadium": "Angel_Stadium_LAA_ATH",
+      "game_pk": "34",
+      "timestamp": "2026-01-07T11:48:11.555576"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Angel_Stadium_LAA_ATH_716371_34_1_f0629.jpg",
+      "source_video": "Angel_Stadium_LAA_ATH_716371_34.mp4",
+      "stadium": "Angel_Stadium_LAA_ATH",
+      "game_pk": "34",
+      "timestamp": "2026-01-07T11:48:12.105736"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Citi_Field_NYM_PHI_716376_47_1_f0041.jpg",
+      "source_video": "Citi_Field_NYM_PHI_716376_47.mp4",
+      "stadium": "Citi_Field_NYM_PHI",
+      "game_pk": "47",
+      "timestamp": "2026-01-07T11:53:46.855520"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Citi_Field_NYM_PHI_716376_47_1_f0047.jpg",
+      "source_video": "Citi_Field_NYM_PHI_716376_47.mp4",
+      "stadium": "Citi_Field_NYM_PHI",
+      "game_pk": "47",
+      "timestamp": "2026-01-07T11:53:47.305594"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Citi_Field_NYM_PHI_716376_47_1_f0054.jpg",
+      "source_video": "Citi_Field_NYM_PHI_716376_47.mp4",
+      "stadium": "Citi_Field_NYM_PHI",
+      "game_pk": "47",
+      "timestamp": "2026-01-07T11:53:47.689303"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Citi_Field_NYM_PHI_716376_47_1_f0061.jpg",
+      "source_video": "Citi_Field_NYM_PHI_716376_47.mp4",
+      "stadium": "Citi_Field_NYM_PHI",
+      "game_pk": "47",
+      "timestamp": "2026-01-07T11:53:48.072753"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Citi_Field_NYM_PHI_716376_47_1_f0084.jpg",
+      "source_video": "Citi_Field_NYM_PHI_716376_47.mp4",
+      "stadium": "Citi_Field_NYM_PHI",
+      "game_pk": "47",
+      "timestamp": "2026-01-07T11:53:48.556487"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Citi_Field_NYM_PHI_716376_47_1_f0094.jpg",
+      "source_video": "Citi_Field_NYM_PHI_716376_47.mp4",
+      "stadium": "Citi_Field_NYM_PHI",
+      "game_pk": "47",
+      "timestamp": "2026-01-07T11:53:49.073263"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Citi_Field_NYM_PHI_716393_36_3_f0017.jpg",
+      "source_video": "Citi_Field_NYM_PHI_716393_36.mp4",
+      "stadium": "Citi_Field_NYM_PHI",
+      "game_pk": "36",
+      "timestamp": "2026-01-07T11:55:21.030948"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Citi_Field_NYM_PHI_716393_36_3_f0024.jpg",
+      "source_video": "Citi_Field_NYM_PHI_716393_36.mp4",
+      "stadium": "Citi_Field_NYM_PHI",
+      "game_pk": "36",
+      "timestamp": "2026-01-07T11:55:23.915930"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_33_2_f0025.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_33.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "33",
+      "timestamp": "2026-01-07T12:00:51.329424"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_33_2_f0034.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_33.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "33",
+      "timestamp": "2026-01-07T12:00:51.729320"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_33_2_f0045.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_33.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "33",
+      "timestamp": "2026-01-07T12:00:52.113616"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_33_2_f0050.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_33.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "33",
+      "timestamp": "2026-01-07T12:00:52.513719"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_33_2_f0076.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_33.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "33",
+      "timestamp": "2026-01-07T12:00:52.946897"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_33_2_f0089.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_33.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "33",
+      "timestamp": "2026-01-07T12:00:53.379834"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_33_2_f0092.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_33.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "33",
+      "timestamp": "2026-01-07T12:00:54.297352"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_33_2_f0093.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_33.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "33",
+      "timestamp": "2026-01-07T12:00:54.847000"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_33_2_f0104.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_33.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "33",
+      "timestamp": "2026-01-07T12:00:55.248149"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_33_2_f0109.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_33.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "33",
+      "timestamp": "2026-01-07T12:00:55.630735"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_64_2_f0010.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_64.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "64",
+      "timestamp": "2026-01-07T12:01:44.253276"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_64_2_f0014.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_64.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "64",
+      "timestamp": "2026-01-07T12:01:44.936627"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_64_2_f0022.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_64.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "64",
+      "timestamp": "2026-01-07T12:01:52.473871"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_64_2_f0026.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_64.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "64",
+      "timestamp": "2026-01-07T12:01:59.843843"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_64_2_f0030.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_64.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "64",
+      "timestamp": "2026-01-07T12:02:05.779318"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_64_2_f0043.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_64.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "64",
+      "timestamp": "2026-01-07T12:02:09.881106"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_64_2_f0058.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_64.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "64",
+      "timestamp": "2026-01-07T12:02:14.032565"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_64_2_f0060.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_64.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "64",
+      "timestamp": "2026-01-07T12:02:17.868221"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_64_2_f0063.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_64.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "64",
+      "timestamp": "2026-01-07T12:02:21.952075"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Dodger_Stadium_LAD_SF_716439_64_2_f0064.jpg",
+      "source_video": "Dodger_Stadium_LAD_SF_716439_64.mp4",
+      "stadium": "Dodger_Stadium_LAD_SF",
+      "game_pk": "64",
+      "timestamp": "2026-01-07T12:02:26.354084"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Great_American_Ball_Park_CIN_PIT_716451_58_4_f0336.jpg",
+      "source_video": "Great_American_Ball_Park_CIN_PIT_716451_58.mp4",
+      "stadium": "Great_American_Ball_Park_CIN_PIT",
+      "game_pk": "58",
+      "timestamp": "2026-01-07T12:06:03.235527"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Great_American_Ball_Park_CIN_PIT_716451_58_4_f0354.jpg",
+      "source_video": "Great_American_Ball_Park_CIN_PIT_716451_58.mp4",
+      "stadium": "Great_American_Ball_Park_CIN_PIT",
+      "game_pk": "58",
+      "timestamp": "2026-01-07T12:06:03.836427"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Great_American_Ball_Park_CIN_PIT_716451_58_4_f0415.jpg",
+      "source_video": "Great_American_Ball_Park_CIN_PIT_716451_58.mp4",
+      "stadium": "Great_American_Ball_Park_CIN_PIT",
+      "game_pk": "58",
+      "timestamp": "2026-01-07T12:06:04.603390"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Nationals_Park_WSH_ATL_716467_52_4_f0028.jpg",
+      "source_video": "Nationals_Park_WSH_ATL_716467_52.mp4",
+      "stadium": "Nationals_Park_WSH_ATL",
+      "game_pk": "52",
+      "timestamp": "2026-01-07T12:11:26.280964"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Nationals_Park_WSH_ATL_716467_52_4_f0048.jpg",
+      "source_video": "Nationals_Park_WSH_ATL_716467_52.mp4",
+      "stadium": "Nationals_Park_WSH_ATL",
+      "game_pk": "52",
+      "timestamp": "2026-01-07T12:11:26.915531"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Nationals_Park_WSH_ATL_716467_52_4_f0067.jpg",
+      "source_video": "Nationals_Park_WSH_ATL_716467_52.mp4",
+      "stadium": "Nationals_Park_WSH_ATL",
+      "game_pk": "52",
+      "timestamp": "2026-01-07T12:11:27.448042"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Nationals_Park_WSH_ATL_716467_52_4_f0085.jpg",
+      "source_video": "Nationals_Park_WSH_ATL_716467_52.mp4",
+      "stadium": "Nationals_Park_WSH_ATL",
+      "game_pk": "52",
+      "timestamp": "2026-01-07T12:11:27.948331"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Nationals_Park_WSH_ATL_716467_52_4_f0129.jpg",
+      "source_video": "Nationals_Park_WSH_ATL_716467_52.mp4",
+      "stadium": "Nationals_Park_WSH_ATL",
+      "game_pk": "52",
+      "timestamp": "2026-01-07T12:11:28.531909"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Nationals_Park_WSH_ATL_716467_52_4_f0148.jpg",
+      "source_video": "Nationals_Park_WSH_ATL_716467_52.mp4",
+      "stadium": "Nationals_Park_WSH_ATL",
+      "game_pk": "52",
+      "timestamp": "2026-01-07T12:11:29.082375"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Nationals_Park_WSH_ATL_716467_52_4_f0149.jpg",
+      "source_video": "Nationals_Park_WSH_ATL_716467_52.mp4",
+      "stadium": "Nationals_Park_WSH_ATL",
+      "game_pk": "52",
+      "timestamp": "2026-01-07T12:11:29.632349"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Nationals_Park_WSH_ATL_716467_52_4_f0163.jpg",
+      "source_video": "Nationals_Park_WSH_ATL_716467_52.mp4",
+      "stadium": "Nationals_Park_WSH_ATL",
+      "game_pk": "52",
+      "timestamp": "2026-01-07T12:11:30.182634"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Nationals_Park_WSH_ATL_716467_52_4_f0191.jpg",
+      "source_video": "Nationals_Park_WSH_ATL_716467_52.mp4",
+      "stadium": "Nationals_Park_WSH_ATL",
+      "game_pk": "52",
+      "timestamp": "2026-01-07T12:11:30.799580"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Nationals_Park_WSH_ATL_716467_52_4_f0217.jpg",
+      "source_video": "Nationals_Park_WSH_ATL_716467_52.mp4",
+      "stadium": "Nationals_Park_WSH_ATL",
+      "game_pk": "52",
+      "timestamp": "2026-01-07T12:11:31.266535"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Oriole_Park_BAL_BOS_716377_60_7_f0016.jpg",
+      "source_video": "Oriole_Park_BAL_BOS_716377_60.mp4",
+      "stadium": "Oriole_Park_BAL_BOS",
+      "game_pk": "60",
+      "timestamp": "2026-01-07T12:13:18.030067"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Oriole_Park_BAL_BOS_716377_60_7_f0017.jpg",
+      "source_video": "Oriole_Park_BAL_BOS_716377_60.mp4",
+      "stadium": "Oriole_Park_BAL_BOS",
+      "game_pk": "60",
+      "timestamp": "2026-01-07T12:13:18.447475"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Oriole_Park_BAL_BOS_716377_60_7_f0034.jpg",
+      "source_video": "Oriole_Park_BAL_BOS_716377_60.mp4",
+      "stadium": "Oriole_Park_BAL_BOS",
+      "game_pk": "60",
+      "timestamp": "2026-01-07T12:13:18.830910"
+    },
+    {
+      "frame_path": "F:\\Claude_Projects\\baseball-biomechanics\\data\\bat_frames_round2_filtered\\Oriole_Park_BAL_BOS_716377_60_7_f0037.jpg",
+      "source_video": "Oriole_Park_BAL_BOS_716377_60.mp4",
+      "stadium": "Oriole_Park_BAL_BOS",
+      "game_pk": "60",
+      "timestamp": "2026-01-07T12:13:19.231579"
+    }
+  ]
+}
