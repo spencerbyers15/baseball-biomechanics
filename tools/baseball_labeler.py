@@ -4,11 +4,23 @@ Baseball Labeler for YOLO Training.
 
 Labeling workflow:
 - View frames from pitch sequences
-- Click and drag to draw bounding box around baseball
+- Single-click to mark ball location (creates small bbox)
+- Press N for "no ball" in frame (negative training example)
 - Navigate between frames with A/D keys
-- Export in YOLO format for training
+- Export in YOLO format (including negatives as empty label files)
 
 Target: ~300-500 labeled frames for robust baseball detection.
+
+Controls:
+    Left-click  : Mark ball location (creates fixed-size bbox)
+    Shift+Drag  : Draw custom bbox (for unusual ball sizes)
+    Right-click : Remove nearest annotation
+    N           : Mark as "no ball" (IMPORTANT negative example)
+    K           : Skip frame (unclear/motion blur)
+    A/Left      : Previous frame
+    D/Right     : Next frame
+    Ctrl+S      : Save annotations
+    Q           : Quit
 """
 
 import json
@@ -17,7 +29,7 @@ import sys
 import warnings
 from pathlib import Path
 from dataclasses import dataclass, asdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Set
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -27,6 +39,9 @@ warnings.filterwarnings("ignore")
 import cv2
 import numpy as np
 from PIL import Image, ImageTk
+
+# Baseball bounding box radius (creates ~40x40 pixel bbox on click)
+BALL_RADIUS = 20
 
 
 @dataclass
@@ -51,6 +66,11 @@ class BboxAnnotation:
         h = abs(self.y2 - self.y1) / img_height
         return (cx, cy, w, h)
 
+    @classmethod
+    def from_point(cls, x: int, y: int, radius: int = BALL_RADIUS) -> "BboxAnnotation":
+        """Create bbox centered on a point (for single-click labeling)."""
+        return cls(x - radius, y - radius, x + radius, y + radius)
+
 
 class BaseballLabeler:
     """Interactive labeler for baseball bounding boxes."""
@@ -66,10 +86,13 @@ class BaseballLabeler:
 
         self.frames: List[Dict] = []
         self.annotations: Dict[str, List[BboxAnnotation]] = {}
+        self.no_ball_frames: Set[str] = set()  # Frames with NO ball (negatives)
+        self.skipped_frames: Set[str] = set()  # Skipped frames
         self.current_idx = 0
 
         # Drawing state
         self.drawing = False
+        self.shift_held = False
         self.start_x = 0
         self.start_y = 0
         self.current_rect = None
@@ -89,7 +112,6 @@ class BaseballLabeler:
             print(f"No videos found")
             return
 
-        # Load existing if appending
         start_idx = 0
         if append:
             self.load_existing()
@@ -99,7 +121,6 @@ class BaseballLabeler:
         import random
         random.seed(42 + start_idx)
 
-        # Sample frames from pitch-release area (where ball is visible)
         samples_per_video = max(1, num_frames // len(all_videos) + 1)
         selected_videos = all_videos * samples_per_video
         random.shuffle(selected_videos)
@@ -117,7 +138,6 @@ class BaseballLabeler:
                 cap.release()
                 continue
 
-            # Sample from middle (pitch release area) - ball most visible here
             frame_idx = random.randint(int(total * 0.3), int(total * 0.7))
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, frame = cap.read()
@@ -141,11 +161,10 @@ class BaseballLabeler:
             if (i + 1) % 50 == 0:
                 print(f"  [{i+1}/{len(selected_videos)}] extracted...")
 
-        # Save frame info
         with open(self.output_dir / "frames_info.json", "w") as f:
             json.dump(self.frames, f, indent=2)
 
-        print(f"\nExtracted {len(self.frames)} frames to {self.output_dir / 'frames'}")
+        print(f"Extracted {len(self.frames)} frames to {self.output_dir / 'frames'}")
 
     def load_existing(self):
         """Load existing frames and annotations."""
@@ -160,64 +179,77 @@ class BaseballLabeler:
         if annotations_file.exists():
             with open(annotations_file) as f:
                 data = json.load(f)
-                for frame_id, boxes in data.items():
-                    self.annotations[frame_id] = [
-                        BboxAnnotation(**b) for b in boxes
-                    ]
-            print(f"Loaded annotations for {len(self.annotations)} frames")
+                if "balls" in data:
+                    for frame_id, boxes in data["balls"].items():
+                        self.annotations[frame_id] = [
+                            BboxAnnotation(**b) for b in boxes
+                        ]
+                if "no_ball" in data:
+                    self.no_ball_frames = set(data["no_ball"])
+                if "skipped" in data:
+                    self.skipped_frames = set(data["skipped"])
+                if "balls" not in data and "no_ball" not in data:
+                    for frame_id, boxes in data.items():
+                        self.annotations[frame_id] = [
+                            BboxAnnotation(**b) for b in boxes
+                        ]
+            print(f"Loaded: {len(self.annotations)} with ball, {len(self.no_ball_frames)} no ball, {len(self.skipped_frames)} skipped")
 
     def save_annotations(self):
         """Save annotations to JSON and YOLO format."""
-        # Save JSON format
-        data = {}
+        data = {
+            "balls": {},
+            "no_ball": list(self.no_ball_frames),
+            "skipped": list(self.skipped_frames),
+        }
         for frame_id, boxes in self.annotations.items():
-            data[frame_id] = [asdict(b) for b in boxes]
+            data["balls"][frame_id] = [asdict(b) for b in boxes]
 
         with open(self.output_dir / "annotations.json", "w") as f:
             json.dump(data, f, indent=2)
 
-        # Export YOLO format
         self._export_yolo_format()
         print(f"Saved annotations to {self.output_dir}")
 
     def _export_yolo_format(self):
-        """Export annotations in YOLO format."""
+        """Export annotations in YOLO format, including negative examples."""
         yolo_dir = self.output_dir / "yolo"
         (yolo_dir / "images").mkdir(parents=True, exist_ok=True)
         (yolo_dir / "labels").mkdir(parents=True, exist_ok=True)
 
-        count = 0
+        positive_count = 0
+        negative_count = 0
+
         for frame_info in self.frames:
             frame_id = str(frame_info["id"])
-            if frame_id not in self.annotations:
+
+            if frame_id in self.skipped_frames:
                 continue
 
-            boxes = self.annotations[frame_id]
-            if not boxes:
-                continue
-
-            # Load frame for dimensions
             frame = cv2.imread(frame_info["path"])
             if frame is None:
                 continue
             h, w = frame.shape[:2]
 
-            # Copy image
             src_path = Path(frame_info["path"])
             dst_img = yolo_dir / "images" / src_path.name
             if not dst_img.exists():
                 cv2.imwrite(str(dst_img), frame)
 
-            # Write YOLO label (class 0 = baseball)
             label_path = yolo_dir / "labels" / (src_path.stem + ".txt")
-            with open(label_path, "w") as f:
-                for box in boxes:
-                    cx, cy, bw, bh = box.to_yolo(w, h)
-                    f.write(f"0 {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
 
-            count += 1
+            if frame_id in self.annotations and self.annotations[frame_id]:
+                with open(label_path, "w") as f:
+                    for box in self.annotations[frame_id]:
+                        cx, cy, bw, bh = box.to_yolo(w, h)
+                        f.write(f"0 {cx:.6f} {cy:.6f} {bw:.6f} {bh:.6f}\n")
+                positive_count += 1
 
-        # Write data.yaml
+            elif frame_id in self.no_ball_frames:
+                with open(label_path, "w") as f:
+                    pass
+                negative_count += 1
+
         yaml_content = f"""path: {yolo_dir}
 train: images
 val: images
@@ -228,92 +260,99 @@ names:
         with open(yolo_dir / "data.yaml", "w") as f:
             f.write(yaml_content)
 
-        print(f"Exported {count} samples in YOLO format to {yolo_dir}")
+        print(f"Exported YOLO format: {positive_count} positives, {negative_count} negatives to {yolo_dir}")
 
     def _build_gui(self):
         """Build the labeling GUI."""
         self.root = tk.Tk()
         self.root.title("Baseball Labeler - YOLO Training")
         self.root.geometry("1400x900")
-        self.root.configure(bg='#2b2b2b')
+        self.root.configure(bg="#2b2b2b")
 
-        # Main container
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Left panel - Canvas
         left_frame = ttk.Frame(main_frame)
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        self.canvas = tk.Canvas(left_frame, bg='#1e1e1e', highlightthickness=0)
+        self.canvas = tk.Canvas(left_frame, bg="#1e1e1e", highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        # Bind events
-        self.canvas.bind('<Button-1>', self._on_mouse_down)
-        self.canvas.bind('<B1-Motion>', self._on_mouse_drag)
-        self.canvas.bind('<ButtonRelease-1>', self._on_mouse_up)
-        self.canvas.bind('<Button-3>', self._on_right_click)
-        self.canvas.bind('<Configure>', lambda e: self._display_frame())
+        self.canvas.bind("<Button-1>", self._on_click)
+        self.canvas.bind("<B1-Motion>", self._on_mouse_drag)
+        self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
+        self.canvas.bind("<Button-3>", self._on_right_click)
+        self.canvas.bind("<Configure>", lambda e: self._display_frame())
 
-        # Right panel
         right_frame = ttk.Frame(main_frame, width=300)
         right_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=10)
         right_frame.pack_propagate(False)
 
-        # Instructions
         instr_frame = ttk.LabelFrame(right_frame, text="Instructions", padding=10)
         instr_frame.pack(fill=tk.X, pady=5)
 
         instructions = """
-1. Click and drag to draw box around BASEBALL
-2. Right-click to delete nearest box
-3. A/D or arrows to navigate frames
-4. S to save, Q to quit
+CLICK on baseball = mark location
+Shift+DRAG = custom bbox size
+Right-click = delete annotation
 
-TIP: Baseball is small and white.
-Look near pitcher's hand or in flight path.
-Skip frames where ball is not visible.
+N = NO BALL in frame (negative)
+K = Skip (unclear frame)
+A/D = navigate frames
+Ctrl+S = save, Q = quit
+
+TIP: Negatives are IMPORTANT!
+Mark frames without visible ball.
         """
         ttk.Label(instr_frame, text=instructions, wraplength=270).pack()
 
-        # Progress
         progress_frame = ttk.LabelFrame(right_frame, text="Progress", padding=10)
         progress_frame.pack(fill=tk.X, pady=5)
 
         self.progress_label = ttk.Label(progress_frame, text="Frame: 0/0")
         self.progress_label.pack()
 
-        self.annotated_label = ttk.Label(progress_frame, text="Annotated: 0")
-        self.annotated_label.pack()
+        self.stats_label = ttk.Label(progress_frame, text="Ball: 0 | No ball: 0 | Skip: 0")
+        self.stats_label.pack()
 
-        # Current frame annotations
-        anno_frame = ttk.LabelFrame(right_frame, text="Current Annotations", padding=10)
-        anno_frame.pack(fill=tk.X, pady=5)
+        status_frame = ttk.LabelFrame(right_frame, text="Current Frame", padding=10)
+        status_frame.pack(fill=tk.X, pady=5)
 
-        self.anno_listbox = tk.Listbox(anno_frame, height=5)
+        self.status_label = ttk.Label(status_frame, text="Not labeled", font=("TkDefaultFont", 10, "bold"))
+        self.status_label.pack()
+
+        self.anno_listbox = tk.Listbox(status_frame, height=3)
         self.anno_listbox.pack(fill=tk.X)
 
-        # Navigation
         nav_frame = ttk.Frame(right_frame)
         nav_frame.pack(fill=tk.X, pady=10)
 
         ttk.Button(nav_frame, text="< Prev (A)", command=self._prev_frame).pack(side=tk.LEFT, expand=True)
         ttk.Button(nav_frame, text="Next (D) >", command=self._next_frame).pack(side=tk.LEFT, expand=True)
 
-        # Actions
-        action_frame = ttk.Frame(right_frame)
-        action_frame.pack(fill=tk.X, pady=10)
+        action_frame = ttk.LabelFrame(right_frame, text="Actions", padding=10)
+        action_frame.pack(fill=tk.X, pady=5)
 
-        ttk.Button(action_frame, text="Save (S)", command=self.save_annotations).pack(fill=tk.X, pady=2)
+        ttk.Button(action_frame, text="No Ball (N)", command=self._mark_no_ball).pack(fill=tk.X, pady=2)
+        ttk.Button(action_frame, text="Skip (K)", command=self._skip_frame).pack(fill=tk.X, pady=2)
         ttk.Button(action_frame, text="Clear Frame", command=self._clear_current).pack(fill=tk.X, pady=2)
+        ttk.Button(action_frame, text="Save (Ctrl+S)", command=self.save_annotations).pack(fill=tk.X, pady=2)
 
-        # Keyboard bindings
-        self.root.bind('<a>', lambda e: self._prev_frame())
-        self.root.bind('<d>', lambda e: self._next_frame())
-        self.root.bind('<Left>', lambda e: self._prev_frame())
-        self.root.bind('<Right>', lambda e: self._next_frame())
-        self.root.bind('<s>', lambda e: self.save_annotations())
-        self.root.bind('<q>', lambda e: self._quit())
+        self.root.bind("<a>", lambda e: self._prev_frame())
+        self.root.bind("<d>", lambda e: self._next_frame())
+        self.root.bind("<Left>", lambda e: self._prev_frame())
+        self.root.bind("<Right>", lambda e: self._next_frame())
+        self.root.bind("<Control-s>", lambda e: self.save_annotations())
+        self.root.bind("<n>", lambda e: self._mark_no_ball())
+        self.root.bind("<k>", lambda e: self._skip_frame())
+        self.root.bind("<q>", lambda e: self._quit())
+        self.root.bind("<Shift_L>", lambda e: self._set_shift(True))
+        self.root.bind("<Shift_R>", lambda e: self._set_shift(True))
+        self.root.bind("<KeyRelease-Shift_L>", lambda e: self._set_shift(False))
+        self.root.bind("<KeyRelease-Shift_R>", lambda e: self._set_shift(False))
+
+    def _set_shift(self, state: bool):
+        self.shift_held = state
 
     def _display_frame(self):
         """Display current frame with annotations."""
@@ -328,7 +367,6 @@ Skip frames where ball is not visible.
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img_h, img_w = frame_rgb.shape[:2]
 
-        # Scale to fit canvas
         canvas_w = self.canvas.winfo_width()
         canvas_h = self.canvas.winfo_height()
         if canvas_w < 10 or canvas_h < 10:
@@ -341,10 +379,8 @@ Skip frames where ball is not visible.
         self.img_offset_x = (canvas_w - new_w) // 2
         self.img_offset_y = (canvas_h - new_h) // 2
 
-        # Resize
         frame_resized = cv2.resize(frame_rgb, (new_w, new_h))
 
-        # Draw annotations
         frame_id = str(frame_info["id"])
         if frame_id in self.annotations:
             for box in self.annotations[frame_id]:
@@ -356,37 +392,70 @@ Skip frames where ball is not visible.
                 cv2.putText(frame_resized, "BALL", (x1, y1 - 5),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
 
-        # Display
+        if frame_id in self.no_ball_frames:
+            cv2.putText(frame_resized, "NO BALL", (10, 40),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, (128, 128, 128), 3)
+        elif frame_id in self.skipped_frames:
+            cv2.putText(frame_resized, "SKIPPED", (10, 40),
+                       cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 128, 0), 3)
+
         self.photo = ImageTk.PhotoImage(Image.fromarray(frame_resized))
         self.canvas.delete("all")
         self.canvas.create_image(self.img_offset_x, self.img_offset_y,
                                 anchor=tk.NW, image=self.photo)
 
-        # Update labels
         self._update_labels()
 
     def _update_labels(self):
         """Update progress labels."""
         total = len(self.frames)
         self.progress_label.config(text=f"Frame: {self.current_idx + 1}/{total}")
-        self.annotated_label.config(text=f"Annotated: {len(self.annotations)}")
+        self.stats_label.config(text=f"Ball: {len(self.annotations)} | No ball: {len(self.no_ball_frames)} | Skip: {len(self.skipped_frames)}")
 
-        # Update listbox
-        self.anno_listbox.delete(0, tk.END)
         frame_id = str(self.frames[self.current_idx]["id"]) if self.frames else ""
+        if frame_id in self.annotations:
+            self.status_label.config(text="HAS BALL", foreground="green")
+        elif frame_id in self.no_ball_frames:
+            self.status_label.config(text="NO BALL (negative)", foreground="gray")
+        elif frame_id in self.skipped_frames:
+            self.status_label.config(text="SKIPPED", foreground="orange")
+        else:
+            self.status_label.config(text="Not labeled", foreground="red")
+
+        self.anno_listbox.delete(0, tk.END)
         if frame_id in self.annotations:
             for i, box in enumerate(self.annotations[frame_id]):
                 cx, cy = box.center()
                 self.anno_listbox.insert(tk.END, f"Ball {i+1}: ({int(cx)}, {int(cy)})")
 
-    def _on_mouse_down(self, event):
-        """Start drawing box."""
-        self.drawing = True
+    def _on_click(self, event):
+        """Handle click - single click marks ball, shift+click starts drag."""
         self.start_x = event.x - self.img_offset_x
         self.start_y = event.y - self.img_offset_y
 
+        if self.shift_held:
+            self.drawing = True
+        else:
+            self._place_ball_at_click(event.x, event.y)
+
+    def _place_ball_at_click(self, screen_x: int, screen_y: int):
+        """Place a ball annotation at click location."""
+        x = int((screen_x - self.img_offset_x) / self.scale_factor)
+        y = int((screen_y - self.img_offset_y) / self.scale_factor)
+
+        frame_id = str(self.frames[self.current_idx]["id"])
+
+        self.no_ball_frames.discard(frame_id)
+        self.skipped_frames.discard(frame_id)
+
+        if frame_id not in self.annotations:
+            self.annotations[frame_id] = []
+
+        self.annotations[frame_id].append(BboxAnnotation.from_point(x, y))
+        self._display_frame()
+
     def _on_mouse_drag(self, event):
-        """Update box while dragging."""
+        """Update box while dragging (shift+drag only)."""
         if not self.drawing:
             return
 
@@ -397,11 +466,11 @@ Skip frames where ball is not visible.
         y = event.y
         self.current_rect = self.canvas.create_rectangle(
             self.start_x + self.img_offset_x, self.start_y + self.img_offset_y,
-            x, y, outline='#00FF00', width=2
+            x, y, outline="#00FF00", width=2
         )
 
     def _on_mouse_up(self, event):
-        """Finish drawing box."""
+        """Finish drawing box (shift+drag only)."""
         if not self.drawing:
             return
 
@@ -409,20 +478,21 @@ Skip frames where ball is not visible.
         end_x = event.x - self.img_offset_x
         end_y = event.y - self.img_offset_y
 
-        # Convert to original image coordinates
         x1 = int(min(self.start_x, end_x) / self.scale_factor)
         y1 = int(min(self.start_y, end_y) / self.scale_factor)
         x2 = int(max(self.start_x, end_x) / self.scale_factor)
         y2 = int(max(self.start_y, end_y) / self.scale_factor)
 
-        # Minimum size check
         if abs(x2 - x1) < 5 or abs(y2 - y1) < 5:
             if self.current_rect:
                 self.canvas.delete(self.current_rect)
             return
 
-        # Add annotation
         frame_id = str(self.frames[self.current_idx]["id"])
+
+        self.no_ball_frames.discard(frame_id)
+        self.skipped_frames.discard(frame_id)
+
         if frame_id not in self.annotations:
             self.annotations[frame_id] = []
 
@@ -438,11 +508,10 @@ Skip frames where ball is not visible.
         if frame_id not in self.annotations or not self.annotations[frame_id]:
             return
 
-        # Find nearest box
         click_x = (event.x - self.img_offset_x) / self.scale_factor
         click_y = (event.y - self.img_offset_y) / self.scale_factor
 
-        min_dist = float('inf')
+        min_dist = float("inf")
         nearest_idx = -1
 
         for i, box in enumerate(self.annotations[frame_id]):
@@ -458,6 +527,34 @@ Skip frames where ball is not visible.
                 del self.annotations[frame_id]
             self._display_frame()
 
+    def _mark_no_ball(self):
+        """Mark current frame as having no ball (negative example)."""
+        if not self.frames:
+            return
+        frame_id = str(self.frames[self.current_idx]["id"])
+
+        if frame_id in self.annotations:
+            del self.annotations[frame_id]
+        self.skipped_frames.discard(frame_id)
+
+        self.no_ball_frames.add(frame_id)
+        self._display_frame()
+        self._next_frame()
+
+    def _skip_frame(self):
+        """Skip current frame."""
+        if not self.frames:
+            return
+        frame_id = str(self.frames[self.current_idx]["id"])
+
+        if frame_id in self.annotations:
+            del self.annotations[frame_id]
+        self.no_ball_frames.discard(frame_id)
+
+        self.skipped_frames.add(frame_id)
+        self._display_frame()
+        self._next_frame()
+
     def _prev_frame(self):
         if self.current_idx > 0:
             self.current_idx -= 1
@@ -469,16 +566,19 @@ Skip frames where ball is not visible.
             self._display_frame()
 
     def _clear_current(self):
-        """Clear annotations for current frame."""
+        """Clear all annotations/status for current frame."""
         if self.frames:
             frame_id = str(self.frames[self.current_idx]["id"])
             if frame_id in self.annotations:
                 del self.annotations[frame_id]
+            self.no_ball_frames.discard(frame_id)
+            self.skipped_frames.discard(frame_id)
             self._display_frame()
 
     def _quit(self):
         """Save and quit."""
-        if self.annotations:
+        total_labeled = len(self.annotations) + len(self.no_ball_frames) + len(self.skipped_frames)
+        if total_labeled > 0:
             if messagebox.askyesno("Save", "Save annotations before quitting?"):
                 self.save_annotations()
         self.root.destroy()
@@ -512,7 +612,7 @@ def main():
 
     if args.extract > 0:
         labeler.extract_frames(args.extract, append=args.append)
-        print("\nRun without --extract to start labeling.")
+        print("Run without --extract to start labeling.")
     else:
         labeler.run()
 
