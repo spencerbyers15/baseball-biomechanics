@@ -23,6 +23,7 @@ End-to-end pipeline for analyzing baseball player biomechanics from Statcast vid
 | Home Plate Detector | `src/detection/home_plate_detector.py` | **Working** | SAM3 text prompt "home plate" |
 | Camera Angle Filter | `src/filtering/camera_filter.py` | **In Progress** | CLIP embeddings + KNN - memory issues during full run |
 | YOLO Bat Barrel | `models/yolo_bat_barrel/` | **Working** | 3-keypoint barrel tracking (mAP50: 0.879) |
+| Pitcher Pose | `src/detection/player_pose.py` | **Working** | YOLO person + heuristics + MediaPipe (94.7% det rate across 30 stadiums) |
 
 ---
 
@@ -140,11 +141,29 @@ End-to-end pipeline for analyzing baseball player biomechanics from Statcast vid
 | `tools/test_camera_classifier.py` | Test camera angle classifier |
 | `tools/demo_pipeline.py` | End-to-end demo: scrape → crop → detect → annotate |
 | `tools/test_sam3_home_plate.py` | Test SAM3 text prompt home plate detection |
+| `tools/test_pitcher_pose.py` | Test pitcher identification + pose across videos/stadiums |
 
 ---
 
 ## Session Notes
 
+### 2026-02-09
+- **PITCHER POSE DETECTION:** Built `src/detection/player_pose.py` (PlayerPoseDetector)
+  - Architecture: YOLOv8n person detection → spatial heuristics → MediaPipe 33-landmark pose
+  - Pitcher heuristic: center-frame (cx 0.30-0.70), lower half (cy >= 0.50), select lowest person
+  - Crops person with 40px padding, runs MediaPipe on crop, transforms coords back to frame space
+  - Visualization: orange skeleton + bbox + "PITCHER" label
+- **BATCH VALIDATION:** Tested across all 30 stadiums (1 video each, 200 frames max)
+  - **Mean detection rate: 94.7%** (median: 100%)
+  - **Mean pose rate: 88.9%**
+  - 22/30 stadiums at 100% detection
+  - Worst: Oriole Park (28.9%) and Citizens Bank Park (31.5%) — both non-standard camera angles
+  - These are expected failures: overhead/side angles where pitcher isn't center-lower
+  - For standard center-field camera (the target use case), detection is effectively 100%
+- **Files created:**
+  - `src/detection/player_pose.py` — PlayerPoseDetector class
+  - `tools/test_pitcher_pose.py` — validation script (--video and --batch modes)
+  - Debug output: `data/debug/pitcher_pose_test/` (montages + annotated frames per stadium)
 
 ### 2026-01-08
 - **HOME PLATE DETECTOR UPGRADED:** Switched from SAM2.1 + point prompts to SAM3 + text prompts
