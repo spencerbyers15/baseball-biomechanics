@@ -1,6 +1,6 @@
 # Baseball Biomechanics Project - Progress Tracker
 
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-02-09
 
 ---
 
@@ -21,9 +21,12 @@ End-to-end pipeline for analyzing baseball player biomechanics from Statcast vid
 | CLI Interface | `cli.py` | **Working** | scrape, segment, pose commands |
 | Baseball Detector | `src/detection/baseball_detector.py` | **Working** | YOLO-World text prompts |
 | Home Plate Detector | `src/detection/home_plate_detector.py` | **Working** | SAM3 text prompt "home plate" |
-| Camera Angle Filter | `src/filtering/camera_filter.py` | **In Progress** | CLIP embeddings + KNN - memory issues during full run |
+| Camera Angle Filter | `src/filtering/camera_filter.py` | **Broken** | CLIP+KNN misclassifies frames on new videos — needs retraining/debugging |
+| Scene Cropper | `src/filtering/scene_cropper.py` | **Broken** | Depends on camera_filter — cut detection works, classification doesn't |
 | YOLO Bat Barrel | `models/yolo_bat_barrel/` | **Working** | 3-keypoint barrel tracking (mAP50: 0.879) |
 | Pitcher Pose | `src/detection/player_pose.py` | **Working** | YOLO person + heuristics + MediaPipe (94.7% det rate across 30 stadiums) |
+| Pitcher Calibration Scraper | `tools/scrape_pitcher_calibration.py` | **Complete** | 1920 videos downloaded (30 stadiums x 3 seasons) |
+| Pitcher Zone Calibrator | `tools/calibrate_pitcher_zones.py` | **Ready** | Awaiting cropped videos to run |
 
 ---
 
@@ -90,6 +93,8 @@ End-to-end pipeline for analyzing baseball player biomechanics from Statcast vid
 | Jan 2025 | Position heuristics for player classification | Baseball Savant uses consistent center-field camera; rule-based is reliable |
 | Jan 2025 | YOLOv8n-pose for bat detection | Lightweight, fast, keypoint detection built-in |
 | Jan 2026 | Switch from 2-keypoint to 3-keypoint barrel tracking | Knob/hands often occluded; barrel is more consistently visible |
+| Feb 2026 | Per-stadium pitcher zones instead of hard-coded | Each stadium has different camera position; calibrated zones improve detection |
+| Feb 2026 | Distance-based scoring over "pick lowest" | More robust to baserunners/infielders who may appear lower than pitcher |
 
 ---
 
@@ -102,6 +107,8 @@ End-to-end pipeline for analyzing baseball player biomechanics from Statcast vid
 | Camera angle labels | `data/camera_angle_labels.json` | 150 frames |
 | Stratified stadium frames | `data/all_frames_by_stadium/` | ~148,620 frames |
 | Reference embeddings | `data/reference_embeddings.pkl` | Built from labeled frames |
+| Pitcher calibration videos | `data/videos/pitcher_calibration/` | 1920 videos (30 stadiums x 3 seasons) |
+| Pitcher calibration metadata | `data/pitcher_calibration_metadata.json` | Download metadata for all calibration videos |
 | Database | `data/baseball_biomechanics.db` | 44 MB |
 
 ---
@@ -125,6 +132,12 @@ End-to-end pipeline for analyzing baseball player biomechanics from Statcast vid
 - [x] Integrate bat barrel tracking into main pipeline
 - [ ] Create visualization combining player pose + bat angle
 - [x] Build end-to-end demo: video -> bat barrel + ball + home plate tracking
+- [x] Scrape pitcher calibration videos (1920 videos, 30 stadiums x 3 seasons)
+- [x] Build per-stadium zone calibration infrastructure
+- [ ] **Fix camera angle classifier** (broken on new videos — see `docs/handoff.md`)
+- [ ] Crop calibration videos to main angle
+- [ ] Run pitcher zone calibration and generate `pitcher_zones.json`
+- [ ] Re-test pitcher detection with calibrated zones
 
 ---
 
@@ -142,12 +155,38 @@ End-to-end pipeline for analyzing baseball player biomechanics from Statcast vid
 | `tools/demo_pipeline.py` | End-to-end demo: scrape → crop → detect → annotate |
 | `tools/test_sam3_home_plate.py` | Test SAM3 text prompt home plate detection |
 | `tools/test_pitcher_pose.py` | Test pitcher identification + pose across videos/stadiums |
+| `tools/scrape_pitcher_calibration.py` | Scrape 10 RHP + 10 LHP per stadium per season |
+| `tools/calibrate_pitcher_zones.py` | Compute per-stadium pitcher zones from calibration data |
 
 ---
 
 ## Session Notes
 
-### 2026-02-09
+### 2026-02-09 (Session 2)
+- **PITCHER ZONE CALIBRATION INFRASTRUCTURE:**
+  - Created `tools/scrape_pitcher_calibration.py`: Queries Statcast for 10 RHP + 10 LHP per stadium per season (2023-2025), downloads videos via Baseball Savant API
+  - Created `tools/calibrate_pitcher_zones.py`: Runs YOLO person detection on calibration videos, computes per-stadium pitcher zones (mean/std cx/cy, bbox size, RHP/LHP offsets)
+  - **1920 videos downloaded** across all 30 stadiums (some stadiums have <60 due to fewer than 10 unique LHP)
+  - 11 pitches had no video — all intentional walks (automatic balls) with no pitch thrown
+- **PLAYER POSE DETECTOR UPGRADED** (`src/detection/player_pose.py`):
+  - Added per-stadium calibrated zone support via `data/pitcher_zones.json`
+  - Distance-based scoring replaces "pick lowest person" heuristic
+  - Temporal smoothing: prefers candidates near previous frame's pitcher position
+  - `set_stadium()`, `reset_temporal()` methods added
+  - Fully backward compatible — no zones file = original behavior
+- **TEST SCRIPT UPDATED** (`tools/test_pitcher_pose.py`):
+  - Added `--stadium`, `--no-temporal`, `--zones-path` flags
+  - Batch mode auto-detects stadium from directory name
+- **BUG FIX** (`src/scraper/savant.py`):
+  - `get_game_play_ids()` now counts `no_pitch` events (pitch timer violations) alongside `pitch` events
+  - This fixes Statcast `pitch_number` alignment with MLB Stats API `playId` mapping
+- **CROPPING ISSUE IDENTIFIED:**
+  - Camera angle classifier (CLIP+KNN) misclassifies frames on calibration videos
+  - Previously worked on 2023 videos — likely due to insufficient "other" training examples (only 28/150)
+  - Cropping removed from scraper to unblock video downloads
+  - See `docs/handoff.md` for investigation plan
+
+### 2026-02-09 (Session 1)
 - **PITCHER POSE DETECTION:** Built `src/detection/player_pose.py` (PlayerPoseDetector)
   - Architecture: YOLOv8n person detection → spatial heuristics → MediaPipe 33-landmark pose
   - Pitcher heuristic: center-frame (cx 0.30-0.70), lower half (cy >= 0.50), select lowest person

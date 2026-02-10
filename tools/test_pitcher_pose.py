@@ -4,11 +4,17 @@ Usage:
     # Single video test
     python tools/test_pitcher_pose.py --video data/videos/2023_cropped/Dodger_Stadium/LAD_SF_716439_33_2_cropped.mp4
 
+    # Single video with stadium zone
+    python tools/test_pitcher_pose.py --video path/to/video.mp4 --stadium "Dodger Stadium"
+
     # Batch test across all 2023 cropped stadiums
     python tools/test_pitcher_pose.py --batch
 
     # Batch with limited videos per stadium
     python tools/test_pitcher_pose.py --batch --per-stadium 1
+
+    # Batch without temporal smoothing (for comparison)
+    python tools/test_pitcher_pose.py --batch --no-temporal
 """
 
 import argparse
@@ -40,6 +46,7 @@ def test_single_video(
     video_path: str,
     save_every: int = 10,
     max_frames: int = 0,
+    use_temporal: bool = True,
 ) -> dict:
     """Run pitcher detection on every frame of a video.
 
@@ -48,6 +55,7 @@ def test_single_video(
         video_path: Path to video file.
         save_every: Save annotated frame every N frames.
         max_frames: Stop after N frames (0 = all).
+        use_temporal: Use temporal smoothing for pitcher selection.
 
     Returns:
         Dict with detection stats.
@@ -72,6 +80,9 @@ def test_single_video(
     frame_num = 0
     saved_frames = []
 
+    # Reset temporal state for each new video
+    detector.reset_temporal()
+
     logger.info(f"Processing {video_name}: {total_frames} frames @ {fps:.1f} fps")
 
     while frame_num < total_frames:
@@ -79,7 +90,7 @@ def test_single_video(
         if not ret:
             break
 
-        results = detector.detect_frame(frame, frame_num)
+        results = detector.detect_frame(frame, frame_num, use_temporal=use_temporal)
         pitcher = results.get("pitcher")
 
         if pitcher is not None:
@@ -180,6 +191,14 @@ def _build_montage(frame_paths: list, output_path: Path, cols: int = 4, thumb_w:
     logger.info(f"  Montage saved: {output_path}")
 
 
+def stadium_name_from_dir(dir_name: str) -> str:
+    """Convert directory name back to stadium name for zone lookup.
+
+    E.g. "Dodger_Stadium" -> "Dodger Stadium"
+    """
+    return dir_name.replace("_", " ")
+
+
 def find_cropped_videos(base_dir: Path, per_stadium: int = 0) -> list:
     """Find all cropped videos organized by stadium.
 
@@ -203,7 +222,12 @@ def find_cropped_videos(base_dir: Path, per_stadium: int = 0) -> list:
     return videos
 
 
-def run_batch(detector: PlayerPoseDetector, per_stadium: int = 1, max_frames: int = 300):
+def run_batch(
+    detector: PlayerPoseDetector,
+    per_stadium: int = 1,
+    max_frames: int = 300,
+    use_temporal: bool = True,
+):
     """Run batch test across all stadiums."""
     cropped_dir = project_root / "data" / "videos" / "2023_cropped"
     if not cropped_dir.exists():
@@ -214,10 +238,18 @@ def run_batch(detector: PlayerPoseDetector, per_stadium: int = 1, max_frames: in
     logger.info(f"Found {len(videos)} videos across {len(set(v[0] for v in videos))} stadiums")
 
     all_stats = []
-    for stadium, video_path in videos:
-        logger.info(f"\n--- {stadium} ---")
-        stats = test_single_video(detector, video_path, save_every=10, max_frames=max_frames)
-        stats["stadium"] = stadium
+    for stadium_dir_name, video_path in videos:
+        # Auto-detect stadium from directory name and set zone
+        stadium_name = stadium_name_from_dir(stadium_dir_name)
+        detector.set_stadium(stadium_name)
+
+        logger.info(f"\n--- {stadium_name} ---")
+        stats = test_single_video(
+            detector, video_path,
+            save_every=10, max_frames=max_frames,
+            use_temporal=use_temporal,
+        )
+        stats["stadium"] = stadium_dir_name
         all_stats.append(stats)
 
     # Summary
@@ -234,6 +266,7 @@ def run_batch(detector: PlayerPoseDetector, per_stadium: int = 1, max_frames: in
     print("=" * 70)
     print(f"Videos tested: {len(valid)}")
     print(f"Stadiums: {len(set(s['stadium'] for s in valid))}")
+    print(f"Temporal smoothing: {'ON' if use_temporal else 'OFF'}")
     print(f"\nPitcher Detection Rate:")
     print(f"  Mean:  {np.mean(det_rates):.1f}%")
     print(f"  Min:   {np.min(det_rates):.1f}%")
@@ -268,6 +301,9 @@ def main():
     parser.add_argument("--per-stadium", type=int, default=1, help="Max videos per stadium in batch mode")
     parser.add_argument("--max-frames", type=int, default=0, help="Max frames per video (0=all)")
     parser.add_argument("--save-every", type=int, default=10, help="Save annotated frame every N frames")
+    parser.add_argument("--stadium", type=str, help="Stadium name for zone lookup (e.g. 'Dodger Stadium')")
+    parser.add_argument("--no-temporal", action="store_true", help="Disable temporal smoothing")
+    parser.add_argument("--zones-path", type=str, help="Path to pitcher_zones.json (default: data/pitcher_zones.json)")
     args = parser.parse_args()
 
     if not args.video and not args.batch:
@@ -275,18 +311,33 @@ def main():
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    detector = PlayerPoseDetector()
+    # Initialize detector with optional zones path
+    detector_kwargs = {}
+    if args.zones_path:
+        detector_kwargs["pitcher_zones_path"] = args.zones_path
+    if args.stadium:
+        detector_kwargs["stadium"] = args.stadium
+
+    detector = PlayerPoseDetector(**detector_kwargs)
+
+    use_temporal = not args.no_temporal
 
     if args.video:
         stats = test_single_video(
             detector, args.video,
             save_every=args.save_every,
             max_frames=args.max_frames,
+            use_temporal=use_temporal,
         )
         print(f"\nResults: {json.dumps(stats, indent=2)}")
 
     if args.batch:
-        run_batch(detector, per_stadium=args.per_stadium, max_frames=args.max_frames)
+        run_batch(
+            detector,
+            per_stadium=args.per_stadium,
+            max_frames=args.max_frames,
+            use_temporal=use_temporal,
+        )
 
     detector.cleanup()
 

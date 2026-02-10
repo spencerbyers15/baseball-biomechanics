@@ -251,7 +251,9 @@ class BaseballSavantScraper:
                 pitch_count = 0
 
                 for event in events:
-                    if event.get("type") == "pitch":
+                    # Statcast pitch_number counts both "pitch" and "no_pitch"
+                    # events (e.g. pitch timer violations, automatic balls/strikes)
+                    if event.get("type") in ("pitch", "no_pitch"):
                         pitch_count += 1
                         play_id = event.get("playId")
                         if play_id:
