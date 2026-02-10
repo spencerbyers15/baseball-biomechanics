@@ -1,6 +1,6 @@
 # Baseball Biomechanics Project - Progress Tracker
 
-**Last Updated:** 2026-01-07
+**Last Updated:** 2026-01-08
 
 ---
 
@@ -20,7 +20,7 @@ End-to-end pipeline for analyzing baseball player biomechanics from Statcast vid
 | Database | `src/database/` | **Working** | SQLite, 44MB, linked to Statcast |
 | CLI Interface | `cli.py` | **Working** | scrape, segment, pose commands |
 | Baseball Detector | `src/detection/baseball_detector.py` | **Working** | YOLO-World text prompts |
-| Home Plate Detector | `src/detection/home_plate_detector.py` | **Working** | SAM + whiteness filtering |
+| Home Plate Detector | `src/detection/home_plate_detector.py` | **Working** | SAM3 text prompt "home plate" |
 | Camera Angle Filter | `src/filtering/camera_filter.py` | **In Progress** | CLIP embeddings + KNN - memory issues during full run |
 | YOLO Bat Barrel | `models/yolo_bat_barrel/` | **Working** | 3-keypoint barrel tracking (mAP50: 0.879) |
 
@@ -121,9 +121,9 @@ End-to-end pipeline for analyzing baseball player biomechanics from Statcast vid
 - [x] Build bat barrel keypoint labeling interface
 - [x] Label bat barrel keypoints (302 labeled, 60 skipped, 50 flagged)
 - [x] Train YOLOv8-pose model for bat barrel detection (Pose mAP50: 0.879)
-- [ ] Integrate bat barrel tracking into main pipeline
+- [x] Integrate bat barrel tracking into main pipeline
 - [ ] Create visualization combining player pose + bat angle
-- [ ] Build end-to-end demo: video -> segmented players + bat angle + ball tracking
+- [x] Build end-to-end demo: video -> bat barrel + ball + home plate tracking
 
 ---
 
@@ -138,11 +138,27 @@ End-to-end pipeline for analyzing baseball player biomechanics from Statcast vid
 | `tools/embed_labeled_frames.py` | Generate CLIP embeddings |
 | `tools/visualize_camera_embeddings.py` | UMAP visualization |
 | `tools/test_camera_classifier.py` | Test camera angle classifier |
+| `tools/demo_pipeline.py` | End-to-end demo: scrape → crop → detect → annotate |
+| `tools/test_sam3_home_plate.py` | Test SAM3 text prompt home plate detection |
 
 ---
 
 ## Session Notes
 
+
+### 2026-01-08
+- **HOME PLATE DETECTOR UPGRADED:** Switched from SAM2.1 + point prompts to SAM3 + text prompts
+  - Previous: Used point prompts in expected region + whiteness filtering (unreliable)
+  - New: Uses SAM3 with text prompt "home plate" (100% detection in tests)
+  - Updated: `src/detection/home_plate_detector.py`
+  - Created test script: `tools/test_sam3_home_plate.py`
+- **END-TO-END DEMO PIPELINE WORKING:** `tools/demo_pipeline.py`
+  - Scrapes random pitch from Statcast 2025
+  - Crops to main camera angle using scene detection
+  - Detects: bat barrel (YOLO-pose), baseball (YOLO), home plate (SAM3)
+  - Outputs annotated video to `data/debug/demo_pipeline/`
+  - Test run: 490 frames, 45% bat detection, 13% ball detection, home plate detected
+- **CLAUDE.md UPDATED:** Added rule to use relative paths for file operations
 
 ### 2026-01-07 (Session 2)
 - **CLEANUP:** Deleted old bat tracking model and related code
