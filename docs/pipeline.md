@@ -1,30 +1,41 @@
-# Baseball Biomechanics — Full Pipeline Documentation
+# Baseball Biomechanics — Pipeline Roadmap
 
-## Overview
+Full end-to-end pipeline for extracting biomechanics data from MLB broadcast video. Takes raw Statcast video URLs and produces per-frame pose, ball trajectory, bat barrel position, and pitch location data for every pitch.
 
-End-to-end pipeline for extracting pitcher pose data from MLB broadcast video. Takes raw Statcast video URLs and produces per-frame 17-landmark pose skeletons of the pitcher.
+## Pipeline Overview
 
 ```
-Scrape video → Crop to main angle → Detect pitcher → Estimate pose
+1. Scrape video from Baseball Savant                                     [DONE]
+2. Temporal crop: scene cuts + camera classifier → main pitching angle   [DONE]
+3. From cropped main angle:
+   a. YOLO person detect → classifier → dynamic player crops
+      - Pitcher crop                                                     [DONE]
+      - Catcher crop                                                     [TODO]
+      - Batter crop                                                      [TODO]
+   b. Ball detection on full main angle view                             [PARTIAL]
+   c. Home plate detection on full main angle view                       [DONE]
+   d. Bat barrel detection on batter crop                                [PARTIAL]
+   e. Catcher mitt detection on catcher crop                             [PARTIAL]
+4. RTMPose-X pose estimation on each player crop                         [DONE]
+5. Combine all detections into per-frame analysis                        [TODO]
 ```
 
 ---
 
-## Stage 1: Video Acquisition
+## Stage 1: Video Acquisition — [DONE]
 
+**Module**: `src/scraper/savant.py`, `src/scraper/video_downloader.py`
 **Script**: `tools/scrape_pitcher_calibration.py`
-**Module**: `src/scraper/`
 
-Scrapes Baseball Savant for pitch video URLs across 30 stadiums × 3 seasons (2023–2025). Downloads one video per stadium per season per game to get broadcast angle diversity.
+Scrapes Baseball Savant for pitch video URLs across 30 stadiums x 3 seasons (2023-2025). Downloads one video per stadium per season per game for broadcast angle diversity.
 
-**Output**: `data/videos/pitcher_calibration/` — 1749 raw videos
-**Metadata**: `data/pitcher_calibration_metadata.json` — resume-safe, don't clear
-
-**Key detail**: Statcast `no_pitch` events (pitch timer violations, IBB) have pitch numbers but no video — the scraper handles these gracefully.
+- **Output**: `data/videos/pitcher_calibration/` — 1749 raw videos
+- **Metadata**: `data/pitcher_calibration_metadata.json` — resume-safe, don't clear
+- **Gotcha**: Statcast `no_pitch` events (pitch timer violations, IBB) have pitch numbers but no video — the scraper handles these gracefully
 
 ---
 
-## Stage 2: Camera Angle Cropping
+## Stage 2: Camera Angle Cropping — [DONE]
 
 **Module**: `src/filtering/scene_cropper.py` + `src/filtering/camera_filter.py`
 
@@ -39,144 +50,264 @@ MLB broadcasts interleave the main pitching angle with replays, close-ups, and d
 - **EfficientNet-B0** binary classifier: `main_angle` vs `other`
 - Test accuracy: **97.7%** across 30 stadiums
 - Model: `models/camera_classifier/best.pt`
-- Training: `tools/train_camera_classifier.py` on `data/labels/scene_cuts/frames/`
 
 ### 2c. Crop & Export
 - `crop_to_main_angle()` finds the longest `main_angle` segment and exports via ffmpeg
 - **Critical**: `crop_to_main_angle` has its own `cut_threshold` param — must match `detect_scene_cuts` (both 0.08)
 
-**Output**: `data/videos/pitcher_calibration_cropped/{Stadium}/{Season}/` — 1744/1749 videos (99.7%)
-**Failures**: 5 videos in `no_main_angle_round3/` (Coors Field night game is the key failure — no night training data)
+**Results**: 1744/1749 videos cropped (99.7%). 5 failures in `no_main_angle_round3/`.
 
-### Training Pipeline (camera classifier)
+**Output**: `data/videos/pitcher_calibration_cropped/{Stadium}/{Season}/`
+
+### Training pipeline
 ```
-tools/label_scene_cuts.py          → Hand-label scene cuts + segment types
+tools/label_scene_cuts.py          → Hand-label scene cuts + segment types (118 videos)
 tools/extract_segment_frames.py    → Extract frames from labeled segments
 tools/train_camera_classifier.py   → Train EfficientNet-B0
+tools/test_camera_classifier.py    → Evaluate on held-out test set
 ```
-**Labels**: `data/labels/scene_cuts/scene_cut_labels.json` — 118 hand-labeled videos
+**Labels**: `data/labels/scene_cuts/scene_cut_labels.json`
 
 ---
 
-## Stage 3: Pitcher Zone Calibration
+## Stage 3: Player Detection & Classification
 
-**Script**: `tools/calibrate_pitcher_zones.py`
-
-Runs YOLO person detection on all 1744 cropped videos to establish where the pitcher typically appears in each stadium's broadcast framing. Produces per-stadium normalized bounding box statistics (center, std dev, bbox size).
-
-**Output**: `data/pitcher_zones.json` — 30 stadiums, 65,516 position samples
-**Reports**: `data/debug/pitcher_zones_report/` — 4 calibration plots
-
-Used as a fallback heuristic when the pitcher classifier model is not available.
-
----
-
-## Stage 4: Pitcher Identification
+Given a cropped main-angle frame, detect all people and classify each as pitcher, catcher, batter, or other.
 
 **Module**: `src/detection/player_pose.py` + `src/filtering/pitcher_classifier.py`
 
-Given a cropped main-angle frame, identifies which detected person is the pitcher.
-
-### Detection
-- **YOLOv8n** person detection (GPU, conf ≥ 0.3)
+### 3a. Person Detection
+- **YOLOv8n** person detection (GPU, conf >= 0.3)
 - Produces candidate list with normalized coordinates and bounding boxes
 
-### Selection (priority order)
-1. **Pitcher classifier** (preferred) — EfficientNet-B0 binary classifier on each person crop
-   - Crops every detected person, classifies all in one batch
-   - Picks highest-confidence "pitcher" prediction
-   - Model: `models/pitcher_classifier/best.pt`
-2. **Calibrated zone heuristic** (fallback) — distance-based scoring using per-stadium zone center ± 2.5σ, with bbox size filtering
-3. **Default zone heuristic** (last resort) — hard-coded center zone (cx 0.30–0.70, cy ≥ 0.50), picks lowest person
+### 3b. Pitcher Classification — [DONE]
+- **EfficientNet-B0** binary classifier on each person crop
+- Batch-classifies all detected people, picks highest-confidence "pitcher"
+- Test accuracy: **100%** on 1,234 test crops (153 pitcher, 1,081 not_pitcher)
+- Model: `models/pitcher_classifier/best.pt`
+- Fallback: calibrated zone heuristic (`data/pitcher_zones.json`, 30 stadiums, 65,516 samples)
 
-### Temporal Smoothing
-- Tracks previous pitcher position across frames
-- Strongly prefers candidate within 0.08 normalized distance of previous position
-- Resets after 10 consecutive frames with no detection
-
-### Pitcher Classifier Training Pipeline
+**Training pipeline**:
 ```
 tools/extract_pitcher_crops.py      → Sample frames, YOLO detect, save person crops
 tools/label_pitcher_crops.py        → OpenCV UI: label each crop as pitcher/not_pitcher
 tools/prepare_pitcher_training.py   → Organize into ImageFolder (split by video, not crop)
 tools/train_pitcher_classifier.py   → Train EfficientNet-B0
 ```
+**Data**: `data/labels/pitcher/` — 6,040 crops from 264 videos (32 stadiums x 3 seasons)
 
-**Data**: `data/labels/pitcher/`
-- `crops/` — 6,040 person crops from 264 videos (32 stadiums × 3 seasons × 3 videos, 3 frames each)
-- `pitcher_labels.json` — 759 pitcher, 5,281 not_pitcher (12.6% pitcher ratio)
-- `crop_metadata.json` — bbox, position, video source for each crop
-- `frames/train/` and `frames/test/` — ImageFolder structure, 80/20 split by video
+### 3c. Catcher Classification — [TODO]
+Same pattern as pitcher classifier: extract person crops from catcher region, label, train EfficientNet-B0. The existing pitcher pipeline tools can be adapted.
 
-**Sampling**: 3 videos/stadium/season, 3 frames/video (skip first/last 10%), all YOLO detections saved.
+### 3d. Batter Classification — [TODO]
+Same pattern. Extract crops from batter region, label, train classifier.
+
+### Temporal Smoothing
+- Tracks previous pitcher position across frames
+- Strongly prefers candidate within 0.08 normalized distance of previous position
+- Resets after 10 consecutive frames with no detection
+- Will extend to catcher/batter once classifiers are trained
 
 ---
 
-## Stage 5: Pose Estimation
+## Stage 4: Pose Estimation — [DONE]
 
 **Module**: `src/pose/rtmpose_backend.py` (via `src/detection/player_pose.py`)
 
-Runs on the cropped pitcher bounding box (not full frame) for accuracy and speed.
+Runs on cropped player bounding boxes (not full frame) for accuracy and speed.
 
-- **Model**: RTMPose-X (384×288 input, ONNX)
+- **Model**: RTMPose-X (384x288 input, ONNX)
 - **Backend**: rtmlib + onnxruntime-gpu
 - **Keypoints**: 17 COCO landmarks (nose, eyes, ears, shoulders, elbows, wrists, hips, knees, ankles)
+- **Model file**: `models/rtmpose/end2end.onnx`
 - **GPU**: Auto-adds cuDNN DLLs to PATH via `_ensure_cudnn_on_path()`
-
-**Model file**: `models/rtmpose/end2end.onnx`
 
 ### Performance
 - With calibrated zones: **96.1% mean detection, 96.1% mean pose, 100% median** (30 stadiums)
 - Tested via `tools/test_pitcher_pose.py --batch --per-stadium 1`
 
-### Environment Notes
+### Environment notes
 - Install rtmlib with `--no-deps` to avoid pulling CPU onnxruntime / conflicting opencv
 - onnxruntime-gpu needs cuDNN DLLs — rtmpose_backend.py handles this automatically
 
 ---
 
-## Key Files Reference
+## Stage 5: Ball Detection — [PARTIAL]
+
+**Module**: `src/detection/baseball_detector.py`
+
+Detect the baseball in the full main-angle view for trajectory tracking.
+
+### YOLO-World zero-shot (primary)
+- Uses `yolov8s-world.pt` with text prompts `["baseball", "ball"]`
+- No custom training needed, production-ready API in `BaseballDetector`
+- Confidence threshold: 0.1
+
+### Custom YOLOv8n (secondary)
+- Trained on 549 hand-labeled frames
+- mAP@50 = **79.9%**
+- Model: `models/yolo_baseball/train/weights/best.pt`
+
+### Training pipeline
+```
+tools/baseball_labeler.py          → YOLO-format labeling UI
+tools/train_yolo_baseball.py       → Train YOLOv8n
+tools/test_ball_detection.py       → Evaluate custom model
+tools/test_ball_yoloworld.py       → Evaluate YOLO-World zero-shot
+```
+**Data**: `data/labels/baseball/` — 549 labeled frames with YOLO annotations
+
+### What's left
+- [ ] Evaluate both approaches on more diverse game footage
+- [ ] Ball trajectory smoothing / interpolation across frames
+- [ ] Integration with per-frame analysis output
+
+---
+
+## Stage 6: Home Plate Detection — [DONE]
+
+**Module**: `src/detection/home_plate_detector.py`
+
+Detect home plate position for strike zone calibration and pitch location mapping.
+
+- **Method**: HuggingFace SAM3 with text prompt "home plate"
+- **Output**: centroid, polygon corners, bounding box, confidence, white ratio
+- **Standalone** — does not depend on SAM3 tracker (which was removed)
+
+### Testing
+```
+tools/test_sam3_home_plate.py      → Quick SAM3 text-prompt test
+tools/test_home_plate_detection.py → Full HomePlateDetector evaluation
+```
+
+---
+
+## Stage 7: Bat Barrel Detection — [PARTIAL]
+
+Detect the bat barrel position in the batter's dynamic crop for swing analysis.
+
+- **Method**: YOLO-pose keypoint model (bbox + barrel endpoint keypoints)
+- **Model**: `models/yolo_bat_barrel/train/weights/best.pt`
+
+### Training pipeline
+```
+tools/extract_bat_frames.py            → Extract batter frames from game video
+tools/scrape_bat_frames_round2.py      → Scrape additional bat training frames
+tools/process_2023_videos_for_bat_labeling.py → Prep 2023 videos for labeling
+tools/barrel_keypoint_labeler.py       → Label bat barrel keypoints
+tools/train_yolo_bat_barrel.py         → Train YOLO-pose bat barrel model
+tools/test_bat_barrel.py               → Evaluate model
+```
+**Data**: `data/labels/bat_barrel/`, `data/bat_frames_round2/`, `data/bat_frames_round2_filtered/`
+
+### What's left
+- [ ] Train batter classifier (Stage 3d) to produce dynamic batter crops
+- [ ] Integrate bat barrel detection with batter crop pipeline
+- [ ] Evaluate barrel tracking accuracy across swing sequences
+
+---
+
+## Stage 8: Catcher Mitt Detection — [PARTIAL]
+
+Detect the catcher's mitt position for pitch location measurement.
+
+- **Method**: YOLOv8-small object detection
+- **Model**: `models/yolo_mitt_diverse/weights/best.pt` (527 training frames, 22MB)
+
+### Training pipeline
+```
+tools/scrape_diverse_dataset.py    → Scrape diverse mitt training frames
+tools/label_diverse_frames.py      → Label mitt positions
+tools/mitt_labeler.py              → Additional mitt labeling UI
+tools/train_diverse_yolo.py        → Train YOLOv8-small
+tools/test_mitt_detection.py       → Evaluate model
+```
+**Data**: `data/yolo_diverse/` — 527 training frames, `data/labels/mitt_finetune/`
+
+### What's left
+- [ ] Train catcher classifier (Stage 3c) to produce dynamic catcher crops
+- [ ] Integrate mitt detection with catcher crop pipeline
+- [ ] Combine mitt position with home plate detection for pitch location mapping
+
+---
+
+## Stage 9: Per-Frame Analysis — [TODO]
+
+Combine all detections into a unified per-frame output:
+
+```json
+{
+  "frame": 42,
+  "timestamp_ms": 1400.0,
+  "pitcher": {
+    "bbox": [0.25, 0.30, 0.15, 0.45],
+    "pose": {"left_shoulder": [x, y, conf], ...},
+    "confidence": 0.95
+  },
+  "batter": {
+    "bbox": [0.60, 0.40, 0.12, 0.40],
+    "pose": {"left_shoulder": [x, y, conf], ...},
+    "bat_barrel": {"tip": [x, y], "knob": [x, y]}
+  },
+  "catcher": {
+    "bbox": [0.45, 0.55, 0.10, 0.30],
+    "mitt": {"centroid": [x, y], "bbox": [x, y, w, h]}
+  },
+  "ball": {"centroid": [x, y], "confidence": 0.8},
+  "home_plate": {"centroid": [x, y], "corners": [...]}
+}
+```
+
+### What's left
+- [ ] Design output schema
+- [ ] Build orchestrator that runs all detectors on each frame
+- [ ] Output to JSON / database (`src/database/` exists for this)
+- [ ] Temporal smoothing across frames for all tracked objects
+
+---
+
+## File Reference
 
 ### Core Modules
 | File | Role |
 |------|------|
-| `src/scraper/` | Baseball Savant scraper + video downloader |
+| `src/scraper/savant.py` | Baseball Savant scraper |
+| `src/scraper/video_downloader.py` | Video downloader |
 | `src/filtering/scene_cropper.py` | Scene cut detection + segment classification + ffmpeg crop |
 | `src/filtering/camera_filter.py` | EfficientNet-B0 camera angle classifier |
 | `src/filtering/pitcher_classifier.py` | EfficientNet-B0 pitcher/not_pitcher classifier |
 | `src/detection/player_pose.py` | YOLO detect → find pitcher → crop → RTMPose pose |
+| `src/detection/baseball_detector.py` | YOLO-World ball detection |
+| `src/detection/home_plate_detector.py` | SAM3 text-prompted home plate detection |
 | `src/pose/rtmpose_backend.py` | RTMPose-X GPU backend (17 COCO keypoints) |
-| `src/pose/mediapipe_backend.py` | MediaPipe CPU fallback (legacy) |
-
-### Tools
-| File | Role |
-|------|------|
-| `tools/scrape_pitcher_calibration.py` | Download calibration videos from Savant |
-| `tools/calibrate_pitcher_zones.py` | Build per-stadium pitcher zones |
-| `tools/label_scene_cuts.py` | Label scene cuts + segment types |
-| `tools/train_camera_classifier.py` | Train camera angle classifier |
-| `tools/extract_pitcher_crops.py` | Extract person crops for pitcher labeling |
-| `tools/label_pitcher_crops.py` | Label pitcher crops (OpenCV UI) |
-| `tools/prepare_pitcher_training.py` | Organize pitcher labels into ImageFolder |
-| `tools/train_pitcher_classifier.py` | Train pitcher classifier |
-| `tools/test_pitcher_pose.py` | Batch pose test with montage generation |
+| `src/pose/base.py` | Pose backend abstract base class |
+| `src/database/` | SQLite schema + operations (future use) |
+| `src/utils/` | Logging config, video utilities |
 
 ### Models
-| File | Description |
+| Path | Description |
 |------|-------------|
 | `models/camera_classifier/best.pt` | Camera angle classifier (97.7% acc) |
-| `models/pitcher_classifier/best.pt` | Pitcher identifier (100% test acc, epoch 3) |
-| `models/rtmpose/end2end.onnx` | RTMPose-X body pose (384×288, ONNX) |
+| `models/pitcher_classifier/best.pt` | Pitcher identifier (100% test acc) |
+| `models/rtmpose/end2end.onnx` | RTMPose-X body pose (384x288, ONNX) |
+| `models/yolo_baseball/train/weights/best.pt` | Custom ball detector (79.9% mAP@50) |
+| `models/yolo_bat_barrel/train/weights/best.pt` | Bat barrel keypoint model |
+| `models/yolo_mitt_diverse/weights/best.pt` | Catcher mitt detector (YOLOv8-small, 527 frames) |
 
 ### Data
 | Path | Contents |
 |------|----------|
-| `data/videos/pitcher_calibration/` | 1749 raw videos |
+| `data/videos/pitcher_calibration/` | 1749 raw videos (30 stadiums x 3 seasons) |
 | `data/videos/pitcher_calibration_cropped/` | 1744 cropped main-angle videos |
-| `data/pitcher_zones.json` | Per-stadium calibrated pitcher zones |
+| `data/pitcher_zones.json` | Per-stadium calibrated pitcher zones (30 stadiums) |
 | `data/pitcher_calibration_metadata.json` | Video download metadata (resume-safe) |
-| `data/labels/scene_cuts/` | Camera classifier training data + labels |
-| `data/labels/pitcher/` | Pitcher classifier training data + labels |
+| `data/labels/scene_cuts/` | Camera classifier training data + labels (118 videos) |
+| `data/labels/pitcher/` | Pitcher classifier training data (6,040 crops) |
+| `data/labels/baseball/` | Ball detection labels (549 frames) |
+| `data/labels/bat_barrel/` | Bat barrel keypoint labels |
+| `data/labels/mitt_finetune/` | Mitt annotation data |
+| `data/yolo_diverse/` | Diverse mitt training data (527 frames) |
+| `data/bat_frames_round2/` | Bat training frames |
 
 ---
 

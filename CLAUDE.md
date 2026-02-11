@@ -26,25 +26,28 @@ This fixes file read/write tool issues.
 
 ## Project Structure
 
-- `src/` - Core modules (scraper, detection, filtering, pose, database)
-- `tools/` - Utility scripts and training tools
+- `src/` - Core modules (scraper, detection, filtering, pose, database, utils)
+- `tools/` - Utility scripts, labelers, and training tools
 - `models/` - Trained model weights
 - `data/` - Data assets (videos, labels, debug output)
-- `docs/` - Feature documentation and handoff notes
+- `docs/` - Pipeline roadmap and documentation
 
 ## Current Status (2026-02-11)
 
 ### What's Working
 - **Camera cropping pipeline**: Scene cut detection (histogram diff, threshold 0.08, 4x subsample) + EfficientNet-B0 classifier (97.7% accuracy). 1744/1749 videos cropped (99.7%).
 - **Pitcher zone calibration**: Complete. `data/pitcher_zones.json` has per-stadium zones from 65,516 position samples across 1744 cropped videos, 30 stadiums.
-- **Pitcher classifier**: EfficientNet-B0 binary classifier (pitcher vs not_pitcher), **100% test accuracy** on 1,234 test crops (153 pitcher, 1,081 not_pitcher). Trained on 6,040 hand-labeled person crops from 264 videos across 32 stadiums × 3 seasons. Replaces spatial heuristic picker in `player_pose.py`.
+- **Pitcher classifier**: EfficientNet-B0 binary classifier (pitcher vs not_pitcher), **100% test accuracy** on 1,234 test crops. Replaces spatial heuristic picker in `player_pose.py`.
 - **Pitcher pose detection**: YOLO person detection (GPU) + pitcher classifier + RTMPose-X 17-landmark pose (GPU via rtmlib/ONNX). Zone heuristics available as fallback.
-- **Scene cut labeler**: `tools/label_scene_cuts.py` with `--dir` and `--auto-classify` flags. 118 hand-labeled videos in `data/labels/scene_cuts/`.
-- **Full pipeline docs**: `docs/pipeline.md` — end-to-end documentation of all stages.
+- **Ball detection**: YOLO-World zero-shot in `src/detection/baseball_detector.py` (primary). Custom YOLOv8n trained (79.9% mAP@50, secondary).
+- **Home plate detection**: SAM3 text-prompted, standalone in `src/detection/home_plate_detector.py`.
+- **Bat barrel detection**: YOLO-pose keypoint model trained. Needs batter crop pipeline.
+- **Catcher mitt detection**: YOLOv8-small (527 frames, `models/yolo_mitt_diverse/`). Needs catcher crop pipeline.
+- **Full pipeline roadmap**: `docs/pipeline.md` — all stages documented with status.
 
 ### In Progress / Next Priority
-- **Batch pose test on full 1744 videos**: `tools/test_pitcher_pose.py` now supports `--video-dir` for custom directories and nested `{Stadium}/{Season}/` structure. Run with: `--batch --video-dir data/videos/pitcher_calibration_cropped --per-stadium 1 --max-frames 200`
-- **5 misclassified videos**: In `data/videos/pitcher_calibration_cropped/no_main_angle_round3/`. Coors Field night game is the key failure — model has no night game training data from that stadium.
+- **Batch pose test on full 1744 videos**: `tools/test_pitcher_pose.py --batch --video-dir data/videos/pitcher_calibration_cropped --per-stadium 1 --max-frames 200`
+- **Catcher/batter classifiers**: Same pattern as pitcher classifier — needed to produce dynamic crops for mitt and bat barrel detection.
 
 ### Critical Rules
 - `crop_to_main_angle` has its OWN `cut_threshold` param — must match `detect_scene_cuts` (both 0.08)
@@ -52,8 +55,7 @@ This fixes file read/write tool issues.
 - `git add -A` hangs on large data directories — use specific file paths
 - Labeler saves video status on Q/N — stale labels from old thresholds need clearing
 - RTMPose-X backend auto-adds cuDNN DLLs to PATH (pip nvidia-cudnn-cu12) — no manual PATH config needed
-- YOLO now runs on GPU by default in player_pose.py; MediaPipeBackend still available for fallback
-- `test_pitcher_pose.py --batch` defaults to `2023_cropped/`; use `--video-dir` for other directories
+- YOLO runs on GPU by default in player_pose.py
 - Pitcher classifier auto-loads from `models/pitcher_classifier/best.pt`; falls back to zone heuristics if not found
 
 ### Key Data
@@ -63,7 +65,12 @@ This fixes file read/write tool issues.
 - `data/pitcher_calibration_metadata.json` — metadata for all downloaded videos
 - `data/labels/scene_cuts/scene_cut_labels.json` — 118 hand-labeled videos
 - `data/labels/pitcher/pitcher_labels.json` — 6,040 labeled crops (759 pitcher, 5,281 not_pitcher)
+- `data/labels/baseball/` — 549 ball detection labeled frames
+- `data/labels/bat_barrel/` — bat barrel keypoint labels
+- `data/yolo_diverse/` — 527 mitt training frames
 - `models/camera_classifier/best.pt` — EfficientNet-B0 camera classifier (97.7% acc)
 - `models/pitcher_classifier/best.pt` — EfficientNet-B0 pitcher classifier (100% acc)
-- `data/debug/pitcher_zones_report/` — calibration visualizations (4 plots)
 - `models/rtmpose/end2end.onnx` — RTMPose-X body model (384x288, ONNX)
+- `models/yolo_baseball/` — custom ball detector (79.9% mAP@50)
+- `models/yolo_bat_barrel/` — bat barrel keypoint model
+- `models/yolo_mitt_diverse/` — catcher mitt detector (YOLOv8-small)
