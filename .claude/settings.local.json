@@ -1,0 +1,46 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(C:/Users/Spencer/anaconda3/envs/baseball/python.exe:*)",
+      "Bash(dir:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(del \"F:\\\\Claude_Projects\\\\baseball-biomechanics\\\\.git\\\\index.lock\")",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(xargs:*)",
+      "Bash(Select-String -Pattern \"filter|camera|motion|cropper\" -Context 1,0)",
+      "Bash(python3:*)",
+      "Bash(findstr:*)",
+      "Bash(copy \"F:\\\\Claude_Projects\\\\baseball-biomechanics\\\\data\\\\videos\\\\pitcher_calibration\\\\Target_Field\\\\2023\\\\MIN_LAA_716445_72_5.mp4\" \"F:\\\\Claude_Projects\\\\baseball-biomechanics\\\\data\\\\labels\\\\scene_cuts\\\\cropped\\\\MIN_LAA_716445_72_5.mp4\")",
+      "Bash(ffmpeg:*)",
+      "Bash(Select-Object -First 5)",
+      "WebSearch",
+      "WebFetch(domain:mmpose.readthedocs.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(grep:*)",
+      "Bash(notepad:*)",
+      "Bash(python:*)",
+      "Bash(Remove-Item -Force src/pose/motionbert_backend.py, src/pose/mediapipe_backend.py, src/segmentation/sam3_tracker.py, src/segmentation/__init__.py, src/pipeline/orchestrator.py, src/pipeline/__init__.py)",
+      "Bash(while read f)",
+      "Bash(do identify \"F:/Claude_Projects/baseball-biomechanics/data/labels/baseball/yolo/images/$f\")",
+      "Bash(echo:*)",
+      "Bash(done)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"C:/Users/Spencer/AppData/Local/Python/pythoncore-3.12-64/python.exe\" \"C:/Users/Spencer/.claude/hooks/notify-attention.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

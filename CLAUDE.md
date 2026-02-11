@@ -37,17 +37,24 @@ This fixes file read/write tool issues.
 ### What's Working
 - **Camera cropping pipeline**: Scene cut detection (histogram diff, threshold 0.08, 4x subsample) + EfficientNet-B0 classifier (97.7% accuracy). 1744/1749 videos cropped (99.7%).
 - **Pitcher zone calibration**: Complete. `data/pitcher_zones.json` has per-stadium zones from 65,516 position samples across 1744 cropped videos, 30 stadiums.
-- **Pitcher classifier**: EfficientNet-B0 binary classifier (pitcher vs not_pitcher), **100% test accuracy** on 1,234 test crops. Replaces spatial heuristic picker in `player_pose.py`.
-- **Pitcher pose detection**: YOLO person detection (GPU) + pitcher classifier + RTMPose-X 17-landmark pose (GPU via rtmlib/ONNX). Zone heuristics available as fallback.
+- **4-class player classifier**: EfficientNet-B0 (pitcher/catcher/batter/other), **98.9% test accuracy**. Model: `models/player_classifier/best.pt`. Binary fallback: `models/pitcher_classifier/best.pt` (100% test acc).
+- **Pitcher pose detection**: YOLO person detection (GPU) + classifier + RTMPose-X 17-landmark pose (GPU via rtmlib/ONNX). Zone heuristics available as fallback.
 - **Ball detection**: YOLO-World zero-shot in `src/detection/baseball_detector.py` (primary). Custom YOLOv8n trained (79.9% mAP@50, secondary).
 - **Home plate detection**: SAM3 text-prompted, standalone in `src/detection/home_plate_detector.py`.
-- **Bat barrel detection**: YOLO-pose keypoint model trained. Needs batter crop pipeline.
-- **Catcher mitt detection**: YOLOv8-small (527 frames, `models/yolo_mitt_diverse/`). Needs catcher crop pipeline.
+- **Bat barrel detection**: YOLO-pose keypoint model trained. Runs on padded batter crop.
+- **Catcher mitt detection**: YOLOv8-small (527 frames, `models/yolo_mitt_diverse/`). Runs on padded catcher crop.
+- **Full pipeline demo**: `tools/demo_full_pipeline.py` — runs ALL detections on a single video, overlays annotations, writes output video. Tested at ~9.3 fps on RTX 2070.
 - **Full pipeline roadmap**: `docs/pipeline.md` — all stages documented with status.
 
+### Full Pipeline Demo Results (Dodger Stadium test video, 386 frames)
+- Pitcher: 100%, Batter: 100%, Catcher: 99%
+- Ball: 20%, Bat barrel: 20%, Mitt: 38%
+- **Next priority**: Improve ball, bat barrel, and catcher mitt detection (more training data needed for all three)
+
 ### In Progress / Next Priority
-- **Batch pose test on full 1744 videos**: `tools/test_pitcher_pose.py --batch --video-dir data/videos/pitcher_calibration_cropped --per-stadium 1 --max-frames 200`
-- **Catcher/batter classifiers**: Same pattern as pitcher classifier — needed to produce dynamic crops for mitt and bat barrel detection.
+- **Improve ball detection**: Only 20% frame detection rate. Current model trained on 549 frames. Needs more labeled data + possible architecture upgrade.
+- **Improve bat barrel detection**: Only 20% frame detection rate. YOLO-pose keypoint model on padded batter crop. Needs more diverse training data.
+- **Improve catcher mitt detection**: Only 38% frame detection rate. YOLOv8-small on padded catcher crop. Needs more training data (currently 527 frames).
 
 ### Critical Rules
 - `crop_to_main_angle` has its OWN `cut_threshold` param — must match `detect_scene_cuts` (both 0.08)
@@ -57,6 +64,12 @@ This fixes file read/write tool issues.
 - RTMPose-X backend auto-adds cuDNN DLLs to PATH (pip nvidia-cudnn-cu12) — no manual PATH config needed
 - YOLO runs on GPU by default in player_pose.py
 - Pitcher classifier auto-loads from `models/pitcher_classifier/best.pt`; falls back to zone heuristics if not found
+- `PitcherClassifier` auto-detects binary vs 4-class from checkpoint's `class_names` — no API change needed
+- `models/player_classifier/best.pt` is the 4-class model (pitcher/catcher/batter/other, 98.9% acc); `models/pitcher_classifier/best.pt` is the binary fallback
+- `demo_full_pipeline.py` prefers multiclass model, falls back to binary if not found
+- SAM3 home plate is ~2.5GB VRAM — demo script runs it on frame 0 only, then frees VRAM before loading other models
+- Bat barrel model was trained on batter crops — must run on padded batter crop, NOT full frame
+- Mitt model works best on catcher-region crops, NOT full frame
 
 ### Key Data
 - `data/videos/pitcher_calibration/` — 1749 raw videos (30 stadiums x 3 seasons)

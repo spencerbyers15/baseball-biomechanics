@@ -8,16 +8,16 @@ Full end-to-end pipeline for extracting biomechanics data from MLB broadcast vid
 1. Scrape video from Baseball Savant                                     [DONE]
 2. Temporal crop: scene cuts + camera classifier → main pitching angle   [DONE]
 3. From cropped main angle:
-   a. YOLO person detect → classifier → dynamic player crops
+   a. YOLO person detect → 4-class classifier → dynamic player crops
       - Pitcher crop                                                     [DONE]
-      - Catcher crop                                                     [TODO]
-      - Batter crop                                                      [TODO]
+      - Catcher crop                                                     [DONE]
+      - Batter crop                                                      [DONE]
    b. Ball detection on full main angle view                             [PARTIAL]
    c. Home plate detection on full main angle view                       [DONE]
    d. Bat barrel detection on batter crop                                [PARTIAL]
    e. Catcher mitt detection on catcher crop                             [PARTIAL]
 4. RTMPose-X pose estimation on each player crop                         [DONE]
-5. Combine all detections into per-frame analysis                        [TODO]
+5. Combine all detections into per-frame analysis                        [PARTIAL]
 ```
 
 ---
@@ -96,11 +96,12 @@ tools/train_pitcher_classifier.py   → Train EfficientNet-B0
 ```
 **Data**: `data/labels/pitcher/` — 6,040 crops from 264 videos (32 stadiums x 3 seasons)
 
-### 3c. Catcher Classification — [TODO]
-Same pattern as pitcher classifier: extract person crops from catcher region, label, train EfficientNet-B0. The existing pitcher pipeline tools can be adapted.
-
-### 3d. Batter Classification — [TODO]
-Same pattern. Extract crops from batter region, label, train classifier.
+### 3c. 4-Class Player Classifier — [DONE]
+Upgraded from binary pitcher/not_pitcher to 4-class: pitcher/catcher/batter/other.
+- **Model**: `models/player_classifier/best.pt` — EfficientNet-B0, **98.9% test accuracy**
+- `PitcherClassifier` class auto-detects binary vs multiclass from checkpoint's `class_names` list
+- Binary model (`models/pitcher_classifier/best.pt`, 100% acc) kept as fallback
+- Replaces the need for separate catcher/batter classifiers
 
 ### Temporal Smoothing
 - Tracks previous pitcher position across frames
@@ -233,10 +234,43 @@ tools/test_mitt_detection.py       → Evaluate model
 
 ---
 
-## Stage 9: Per-Frame Analysis — [TODO]
+## Stage 9: Per-Frame Analysis — [PARTIAL]
 
-Combine all detections into a unified per-frame output:
+Combine all detections into a unified per-frame output.
 
+### Full Pipeline Demo — [DONE]
+**Script**: `tools/demo_full_pipeline.py`
+
+Runs ALL detectors on a single cropped video, overlays annotations, writes output video.
+
+Pipeline per frame:
+1. YOLO person detection → all person bboxes
+2. 4-class classification (PitcherClassifier with multiclass model) → pitcher/catcher/batter/other
+3. RTMPose-X pose on pitcher + batter crops (40px padding)
+4. Bat barrel (YOLO-pose) on padded batter crop (150px padding), coords mapped to frame space
+5. Catcher mitt (YOLO) on padded catcher crop (100px padding), coords mapped to frame space
+6. Ball detection (custom YOLOv8n) on full frame
+7. Home plate (SAM3) on frame 0 only, then SAM3 freed from VRAM
+
+**Performance**: ~9.3 fps on RTX 2070 (all models on GPU simultaneously).
+
+**Test results** (Dodger Stadium, 386 frames):
+| Detection | Frame rate |
+|-----------|-----------|
+| Pitcher | 100% |
+| Batter | 100% |
+| Catcher | 99% |
+| Ball | 20% |
+| Bat barrel | 20% |
+| Mitt | 38% |
+
+**Usage**:
+```bash
+C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/demo_full_pipeline.py --video <path>
+C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/demo_full_pipeline.py --skip-home-plate  # random video, no SAM3
+```
+
+### Target output schema
 ```json
 {
   "frame": 42,
@@ -261,10 +295,12 @@ Combine all detections into a unified per-frame output:
 ```
 
 ### What's left
-- [ ] Design output schema
-- [ ] Build orchestrator that runs all detectors on each frame
-- [ ] Output to JSON / database (`src/database/` exists for this)
+- [ ] Improve ball detection (20% → target 60%+): more training data, possible model upgrade
+- [ ] Improve bat barrel detection (20% → target 60%+): more diverse training data
+- [ ] Improve catcher mitt detection (38% → target 70%+): more training data
+- [ ] Output structured JSON per-frame data (not just video overlay)
 - [ ] Temporal smoothing across frames for all tracked objects
+- [ ] Database integration (`src/database/` exists for this)
 
 ---
 
@@ -281,6 +317,7 @@ Combine all detections into a unified per-frame output:
 | `src/detection/player_pose.py` | YOLO detect → find pitcher → crop → RTMPose pose |
 | `src/detection/baseball_detector.py` | YOLO-World ball detection |
 | `src/detection/home_plate_detector.py` | SAM3 text-prompted home plate detection |
+| `tools/demo_full_pipeline.py` | Full pipeline demo: all detections overlaid on video |
 | `src/pose/rtmpose_backend.py` | RTMPose-X GPU backend (17 COCO keypoints) |
 | `src/pose/base.py` | Pose backend abstract base class |
 | `src/database/` | SQLite schema + operations (future use) |
@@ -290,7 +327,8 @@ Combine all detections into a unified per-frame output:
 | Path | Description |
 |------|-------------|
 | `models/camera_classifier/best.pt` | Camera angle classifier (97.7% acc) |
-| `models/pitcher_classifier/best.pt` | Pitcher identifier (100% test acc) |
+| `models/pitcher_classifier/best.pt` | Pitcher identifier, binary (100% test acc) |
+| `models/player_classifier/best.pt` | 4-class player classifier (98.9% test acc) |
 | `models/rtmpose/end2end.onnx` | RTMPose-X body pose (384x288, ONNX) |
 | `models/yolo_baseball/train/weights/best.pt` | Custom ball detector (79.9% mAP@50) |
 | `models/yolo_bat_barrel/train/weights/best.pt` | Bat barrel keypoint model |
