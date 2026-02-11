@@ -171,12 +171,15 @@ def auto_detect_cuts(diffs: np.ndarray, threshold: float, fps: float,
 
 class SceneCutLabeler:
     def __init__(self, videos: list, labels: dict, output_path: Path,
-                 threshold: float = 0.25, min_segment_duration: float = 0.5):
+                 threshold: float = 0.25, min_segment_duration: float = 0.5,
+                 auto_classify: bool = False):
         self.videos = videos
         self.labels = labels
         self.output_path = output_path
         self.threshold = threshold
         self.min_segment_duration = min_segment_duration
+        self.auto_classify = auto_classify
+        self.classifier = None
 
         # Find starting index — first unlabeled
         self.video_idx = 0
@@ -296,6 +299,50 @@ class SceneCutLabeler:
             print(f"  Auto-detected {len(self.auto_detected)} cuts at threshold {self.threshold}")
 
         self._sync_segment_labels()
+
+        # Auto-classify segments with EfficientNet model
+        if self.auto_classify and entry.get("status") != "labeled":
+            if self.classifier is None:
+                from src.filtering.camera_filter import CameraAngleClassifier
+                print("  Loading classifier...", end="", flush=True)
+                self.classifier = CameraAngleClassifier()
+                self.classifier.initialize()
+                print(" done")
+            segments = self._get_segments()
+            print(f"  Classifying {len(segments)} segments...", end="", flush=True)
+            for si, (seg_start, seg_end) in enumerate(segments):
+                seg_len = seg_end - seg_start
+                if seg_len <= 0:
+                    self.segment_labels[si] = "other"
+                    continue
+                # Sample up to 5 frames
+                n_samples = min(5, max(1, seg_len // 10))
+                if n_samples == 1:
+                    positions = [seg_start + seg_len // 2]
+                else:
+                    step = seg_len // (n_samples + 1)
+                    positions = [seg_start + step * (i + 1) for i in range(n_samples)]
+                frames = []
+                for pos in positions:
+                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, pos)
+                    ret, frame = self.cap.read()
+                    if ret:
+                        frames.append(frame)
+                if not frames:
+                    self.segment_labels[si] = "other"
+                    continue
+                results = self.classifier.classify_frames_batch(frames)
+                main_scores = []
+                for label, conf in results:
+                    main_scores.append(conf if label == "main_angle" else 1.0 - conf)
+                avg = sum(main_scores) / len(main_scores)
+                self.segment_labels[si] = "main_angle" if avg > 0.5 else "other"
+            n_main = sum(1 for sl in self.segment_labels if sl == "main_angle")
+            print(f" {n_main} main_angle, {len(segments) - n_main} other")
+            # Reset cached frame since we seeked around
+            self.cached_frame = None
+            self.cached_frame_idx = -1
+
         return True
 
     def _get_frame(self, frame_idx: int) -> np.ndarray:
@@ -668,6 +715,42 @@ class SceneCutLabeler:
         print(f"\nDone! Labeled {labeled}/{len(self.videos)} videos")
 
 
+def videos_from_dir(dir_path: Path) -> list:
+    """Load videos from a directory. Parses stadium/season from filename pattern."""
+    videos = []
+    proj_str = str(PROJECT_ROOT).replace("\\", "/")
+    for f in sorted(dir_path.glob("*.mp4")):
+        # Filenames like: Stadium_Name_2024_TEAM_TEAM_123_45_6.mp4
+        # or original names like: TEAM_TEAM_123_45_6.mp4
+        fname = f.stem
+        parts = fname.split("_")
+
+        # Try to detect Stadium_Season_ prefix (from no_main_angle copies)
+        stadium = "unknown"
+        season = "unknown"
+        video_name = fname
+        for i, p in enumerate(parts):
+            if p in ("2023", "2024", "2025"):
+                stadium = "_".join(parts[:i])
+                season = p
+                video_name = "_".join(parts[i + 1:])
+                break
+
+        # Find original video path
+        if stadium != "unknown":
+            original = PROJECT_ROOT / f"data/videos/pitcher_calibration/{stadium}/{season}/{video_name}.mp4"
+        else:
+            original = f
+
+        vpath = str(original).replace("\\", "/")
+        if vpath.startswith(proj_str):
+            vpath = vpath[len(proj_str):].lstrip("/")
+
+        videos.append({"path": vpath, "stadium": stadium, "season": season})
+
+    return videos
+
+
 def main():
     parser = argparse.ArgumentParser(description="Label scene cuts + segments")
     parser.add_argument("--threshold", type=float, default=0.25,
@@ -676,10 +759,18 @@ def main():
                         help="Min segment duration in seconds (default: 0.5)")
     parser.add_argument("--metadata", type=Path, default=METADATA_PATH)
     parser.add_argument("--output", type=Path, default=OUTPUT_PATH)
+    parser.add_argument("--dir", type=Path, default=None,
+                        help="Load videos from directory instead of metadata")
+    parser.add_argument("--auto-classify", action="store_true",
+                        help="Pre-classify segments with EfficientNet model")
     args = parser.parse_args()
 
-    videos = select_videos(args.metadata)
-    print(f"Selected {len(videos)} videos across {len(set(v['stadium'] for v in videos))} stadiums")
+    if args.dir:
+        videos = videos_from_dir(args.dir)
+        print(f"Loaded {len(videos)} videos from {args.dir}")
+    else:
+        videos = select_videos(args.metadata)
+        print(f"Selected {len(videos)} videos across {len(set(v['stadium'] for v in videos))} stadiums")
 
     labels = load_labels(args.output)
     labels["metadata"]["total_videos"] = len(videos)
@@ -696,7 +787,8 @@ def main():
 
     labeler = SceneCutLabeler(videos, labels, args.output,
                               threshold=args.threshold,
-                              min_segment_duration=args.min_duration)
+                              min_segment_duration=args.min_duration,
+                              auto_classify=args.auto_classify)
     labeler.run()
 
 

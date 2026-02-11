@@ -1,7 +1,8 @@
-"""Player detection and pose estimation using YOLO + MediaPipe.
+"""Player detection and pose estimation using YOLO + RTMPose.
 
 Detects players by role (pitcher, batter) using YOLO person detection
-with spatial heuristics, then extracts 33-landmark poses via MediaPipe.
+with spatial heuristics, then extracts 17-landmark poses via RTMPose-X
+(GPU-accelerated ONNX through rtmlib).
 
 Supports per-stadium calibrated pitcher zones (from pitcher_zones.json)
 for improved detection, with distance-based scoring and temporal smoothing.
@@ -35,8 +36,8 @@ class PlayerPoseDetector:
     """Detect players by role and extract poses.
 
     Uses YOLOv8n for person detection with spatial heuristics to identify
-    the pitcher (and eventually batter), then runs MediaPipe Pose on the
-    cropped region for accurate 33-landmark pose estimation.
+    the pitcher (and eventually batter), then runs RTMPose-X on the
+    cropped region for accurate 17-landmark pose estimation (GPU).
 
     Supports per-stadium calibrated zones loaded from pitcher_zones.json
     for improved pitcher identification. Falls back to hard-coded defaults
@@ -157,26 +158,25 @@ class PlayerPoseDetector:
         self._frames_without_pitcher = 0
 
     def _load_yolo(self):
-        """Lazy-load YOLO model."""
+        """Lazy-load YOLO model on GPU."""
         if self._yolo is not None:
             return
         from ultralytics import YOLO
         logger.info(f"Loading YOLO model: {self.yolo_model_name}")
         self._yolo = YOLO(self.yolo_model_name)
+        self._yolo.to("cuda")
 
     def _load_pose(self):
-        """Lazy-load MediaPipe pose backend."""
+        """Lazy-load RTMPose-X pose backend (GPU)."""
         if self._pose_backend is not None:
             return
-        from src.pose.mediapipe_backend import MediaPipeBackend
-        self._pose_backend = MediaPipeBackend(
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-            model_complexity=1,
-            num_poses=1,
+        from src.pose.rtmpose_backend import RTMPoseBackend
+        self._pose_backend = RTMPoseBackend(
+            min_detection_confidence=0.3,
+            device="cuda",
         )
         self._pose_backend.initialize()
-        logger.info("MediaPipe pose backend initialized")
+        logger.info("RTMPose-X pose backend initialized")
 
     def _detect_persons(self, frame: np.ndarray) -> List[Dict[str, Any]]:
         """Run YOLO person detection and compute normalized coords.
@@ -423,7 +423,7 @@ class PlayerPoseDetector:
         crop_y1: int,
         frame_number: int,
     ) -> PoseResult:
-        """Run MediaPipe on crop and transform coordinates back to frame space."""
+        """Run pose estimation on crop and transform coordinates back to frame space."""
         self._load_pose()
 
         pose_result = self._pose_backend.process_frame(crop, frame_number)

@@ -202,8 +202,11 @@ def stadium_name_from_dir(dir_name: str) -> str:
 def find_cropped_videos(base_dir: Path, per_stadium: int = 0) -> list:
     """Find all cropped videos organized by stadium.
 
+    Supports both flat layout ({Stadium}/*.mp4) and nested layout
+    ({Stadium}/{Season}/*.mp4) used by pitcher_calibration_cropped.
+
     Args:
-        base_dir: Path to 2023_cropped directory.
+        base_dir: Path to video directory.
         per_stadium: Max videos per stadium (0 = all).
 
     Returns:
@@ -214,7 +217,12 @@ def find_cropped_videos(base_dir: Path, per_stadium: int = 0) -> list:
         if not stadium_dir.is_dir():
             continue
         stadium_name = stadium_dir.name
+
+        # Flat: {Stadium}/*.mp4
         mp4s = sorted(stadium_dir.glob("*.mp4"))
+        # Nested: {Stadium}/{Season}/*.mp4
+        mp4s += sorted(stadium_dir.glob("*/*.mp4"))
+
         if per_stadium > 0:
             mp4s = mp4s[:per_stadium]
         for mp4 in mp4s:
@@ -227,9 +235,10 @@ def run_batch(
     per_stadium: int = 1,
     max_frames: int = 300,
     use_temporal: bool = True,
+    video_dir: str = "data/videos/2023_cropped",
 ):
     """Run batch test across all stadiums."""
-    cropped_dir = project_root / "data" / "videos" / "2023_cropped"
+    cropped_dir = project_root / video_dir
     if not cropped_dir.exists():
         logger.error(f"Cropped videos directory not found: {cropped_dir}")
         return
@@ -304,6 +313,8 @@ def main():
     parser.add_argument("--stadium", type=str, help="Stadium name for zone lookup (e.g. 'Dodger Stadium')")
     parser.add_argument("--no-temporal", action="store_true", help="Disable temporal smoothing")
     parser.add_argument("--zones-path", type=str, help="Path to pitcher_zones.json (default: data/pitcher_zones.json)")
+    parser.add_argument("--video-dir", type=str, default="data/videos/2023_cropped",
+                        help="Video directory for batch mode (default: data/videos/2023_cropped)")
     args = parser.parse_args()
 
     if not args.video and not args.batch:
@@ -337,6 +348,7 @@ def main():
             per_stadium=args.per_stadium,
             max_frames=args.max_frames,
             use_temporal=use_temporal,
+            video_dir=args.video_dir,
         )
 
     detector.cleanup()

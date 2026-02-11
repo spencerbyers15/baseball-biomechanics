@@ -37,12 +37,11 @@ This fixes file read/write tool issues.
 ### What's Working
 - **Camera cropping pipeline**: Scene cut detection (histogram diff, threshold 0.08, 4x subsample) + EfficientNet-B0 classifier (97.7% accuracy). 1744/1749 videos cropped (99.7%).
 - **Pitcher zone calibration**: Complete. `data/pitcher_zones.json` has per-stadium zones from 65,516 position samples across 1744 cropped videos, 30 stadiums.
-- **Pitcher pose detection**: YOLO person detection + MediaPipe 33-landmark pose. With calibrated zones: 94.8% mean detection, 93.6% mean pose (tested on 30 videos from 2023_cropped, 1 per stadium).
+- **Pitcher pose detection**: YOLO person detection (GPU) + RTMPose-X 17-landmark pose (GPU via rtmlib/ONNX). With calibrated zones: 96.1% mean detection, 96.1% mean pose, 100% median (tested on 30 videos from 2023_cropped, 1 per stadium).
 - **Scene cut labeler**: `tools/label_scene_cuts.py` with `--dir` and `--auto-classify` flags. 118 hand-labeled videos in `data/labels/scene_cuts/`.
 
 ### In Progress / Next Priority
-- **GPU acceleration for pose pipeline**: Current pipeline runs YOLO (CPU, 10.6ms) + MediaPipe (CPU-only, 27.8ms) = 38.4ms/frame. At 1744 videos x ~420 frames each, full batch takes ~10 hours. Need to move to GPU to make this practical. See `docs/handoff.md` for details.
-- **Batch pose test on full 1744 videos**: `tools/test_pitcher_pose.py` currently only tests against `data/videos/2023_cropped/` (30 videos). Needs updating to run on `data/videos/pitcher_calibration_cropped/` (1744 videos, `{Stadium}/{Season}/` structure).
+- **Batch pose test on full 1744 videos**: `tools/test_pitcher_pose.py` now supports `--video-dir` for custom directories and nested `{Stadium}/{Season}/` structure. Run with: `--batch --video-dir data/videos/pitcher_calibration_cropped --per-stadium 1 --max-frames 200`
 - **5 misclassified videos**: In `data/videos/pitcher_calibration_cropped/no_main_angle_round3/`. Coors Field night game is the key failure — model has no night game training data from that stadium.
 
 ### Critical Rules
@@ -50,9 +49,9 @@ This fixes file read/write tool issues.
 - When updating thresholds, check ALL functions that pass threshold values
 - `git add -A` hangs on large data directories — use specific file paths
 - Labeler saves video status on Q/N — stale labels from old thresholds need clearing
-- MediaPipe Python on desktop is CPU-only — no GPU delegate available
-- YOLO person detection runs on CPU by default; pass `device='cuda'` for GPU
-- `test_pitcher_pose.py --batch` uses `2023_cropped/` not `pitcher_calibration_cropped/`
+- RTMPose-X backend auto-adds cuDNN DLLs to PATH (pip nvidia-cudnn-cu12) — no manual PATH config needed
+- YOLO now runs on GPU by default in player_pose.py; MediaPipeBackend still available for fallback
+- `test_pitcher_pose.py --batch` defaults to `2023_cropped/`; use `--video-dir` for other directories
 
 ### Key Data
 - `data/videos/pitcher_calibration/` — 1749 raw videos (30 stadiums x 3 seasons)
@@ -62,3 +61,4 @@ This fixes file read/write tool issues.
 - `data/labels/scene_cuts/scene_cut_labels.json` — 118 hand-labeled videos
 - `models/camera_classifier/best.pt` — EfficientNet-B0 camera classifier (97.7% acc)
 - `data/debug/pitcher_zones_report/` — calibration visualizations (4 plots)
+- `models/rtmpose/end2end.onnx` — RTMPose-X body model (384x288, ONNX)
