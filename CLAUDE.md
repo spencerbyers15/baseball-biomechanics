@@ -32,22 +32,33 @@ This fixes file read/write tool issues.
 - `data/` - Data assets (videos, labels, debug output)
 - `docs/` - Feature documentation and handoff notes
 
-## Current Status (2026-02-09)
+## Current Status (2026-02-11)
 
-### Completed This Session
-- **Pitcher calibration scraper** (`tools/scrape_pitcher_calibration.py`): Downloaded 1920 raw videos across 30 stadiums x 3 seasons (2023-2025), 10 RHP + 10 LHP each. Videos in `data/videos/pitcher_calibration/{Stadium_Name}/{season}/`.
-- **Calibration script** (`tools/calibrate_pitcher_zones.py`): Ready to run. Will compute per-stadium pitcher zones from the 1920 calibration videos and output `data/pitcher_zones.json`.
-- **Player pose detector upgraded** (`src/detection/player_pose.py`): Added calibrated zone support, distance-based scoring (replaces "pick lowest"), temporal smoothing, `set_stadium()`, `reset_temporal()`. Fully backward compatible.
-- **Test script updated** (`tools/test_pitcher_pose.py`): Added `--stadium`, `--no-temporal`, `--zones-path` flags. Batch mode auto-detects stadium from directory name.
-- **Bug fix in savant.py**: Fixed `get_game_play_ids()` to count `no_pitch` events (pitch timer violations, intentional walks) alongside `pitch` events for correct pitch_number alignment.
+### What's Working
+- **Camera cropping pipeline**: Scene cut detection (histogram diff, threshold 0.08, 4x subsample) + EfficientNet-B0 classifier (97.7% accuracy). 1744/1749 videos cropped (99.7%).
+- **Pitcher zone calibration**: Complete. `data/pitcher_zones.json` has per-stadium zones from 65,516 position samples across 1744 cropped videos, 30 stadiums.
+- **Pitcher pose detection**: YOLO person detection + MediaPipe 33-landmark pose. With calibrated zones: 94.8% mean detection, 93.6% mean pose (tested on 30 videos from 2023_cropped, 1 per stadium).
+- **Scene cut labeler**: `tools/label_scene_cuts.py` with `--dir` and `--auto-classify` flags. 118 hand-labeled videos in `data/labels/scene_cuts/`.
 
-### Blocked / Next Priority
-- **Camera angle cropping is broken**: The CLIP+KNN classifier in `src/filtering/camera_filter.py` misclassifies many frames, causing `src/filtering/scene_cropper.py` to crop incorrectly. It previously worked on 43/44 videos in 2023_cropped but fails on the new calibration videos. See `docs/handoff.md` for investigation details.
-- **Calibration needs cropping first**: The 1920 raw videos contain non-pitching segments (replays, close-ups, dugout shots). `calibrate_pitcher_zones.py` should run on cropped main-angle-only videos for accurate zone computation. Running on raw videos will introduce noise from non-pitching frames.
+### In Progress / Next Priority
+- **GPU acceleration for pose pipeline**: Current pipeline runs YOLO (CPU, 10.6ms) + MediaPipe (CPU-only, 27.8ms) = 38.4ms/frame. At 1744 videos x ~420 frames each, full batch takes ~10 hours. Need to move to GPU to make this practical. See `docs/handoff.md` for details.
+- **Batch pose test on full 1744 videos**: `tools/test_pitcher_pose.py` currently only tests against `data/videos/2023_cropped/` (30 videos). Needs updating to run on `data/videos/pitcher_calibration_cropped/` (1744 videos, `{Stadium}/{Season}/` structure).
+- **5 misclassified videos**: In `data/videos/pitcher_calibration_cropped/no_main_angle_round3/`. Coors Field night game is the key failure — model has no night game training data from that stadium.
+
+### Critical Rules
+- `crop_to_main_angle` has its OWN `cut_threshold` param — must match `detect_scene_cuts` (both 0.08)
+- When updating thresholds, check ALL functions that pass threshold values
+- `git add -A` hangs on large data directories — use specific file paths
+- Labeler saves video status on Q/N — stale labels from old thresholds need clearing
+- MediaPipe Python on desktop is CPU-only — no GPU delegate available
+- YOLO person detection runs on CPU by default; pass `device='cuda'` for GPU
+- `test_pitcher_pose.py --batch` uses `2023_cropped/` not `pitcher_calibration_cropped/`
 
 ### Key Data
-- `data/videos/pitcher_calibration/` — 1920 raw videos (30 stadiums x 3 seasons)
+- `data/videos/pitcher_calibration/` — 1749 raw videos (30 stadiums x 3 seasons)
+- `data/videos/pitcher_calibration_cropped/` — 1744 cropped main-angle videos
+- `data/pitcher_zones.json` — per-stadium calibrated pitcher zones (30 stadiums)
 - `data/pitcher_calibration_metadata.json` — metadata for all downloaded videos
-- `data/pitcher_calibration_scraper.log` — scraper run log
-- `data/camera_angle_labels.json` — 150 hand-labeled frames (122 main + 28 other)
-- `data/labeled_frames_embeddings.pkl` — CLIP embeddings for KNN classifier
+- `data/labels/scene_cuts/scene_cut_labels.json` — 118 hand-labeled videos
+- `models/camera_classifier/best.pt` — EfficientNet-B0 camera classifier (97.7% acc)
+- `data/debug/pitcher_zones_report/` — calibration visualizations (4 plots)
