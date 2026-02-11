@@ -37,8 +37,10 @@ This fixes file read/write tool issues.
 ### What's Working
 - **Camera cropping pipeline**: Scene cut detection (histogram diff, threshold 0.08, 4x subsample) + EfficientNet-B0 classifier (97.7% accuracy). 1744/1749 videos cropped (99.7%).
 - **Pitcher zone calibration**: Complete. `data/pitcher_zones.json` has per-stadium zones from 65,516 position samples across 1744 cropped videos, 30 stadiums.
-- **Pitcher pose detection**: YOLO person detection (GPU) + RTMPose-X 17-landmark pose (GPU via rtmlib/ONNX). With calibrated zones: 96.1% mean detection, 96.1% mean pose, 100% median (tested on 30 videos from 2023_cropped, 1 per stadium).
+- **Pitcher classifier**: EfficientNet-B0 binary classifier (pitcher vs not_pitcher), **100% test accuracy** on 1,234 test crops (153 pitcher, 1,081 not_pitcher). Trained on 6,040 hand-labeled person crops from 264 videos across 32 stadiums × 3 seasons. Replaces spatial heuristic picker in `player_pose.py`.
+- **Pitcher pose detection**: YOLO person detection (GPU) + pitcher classifier + RTMPose-X 17-landmark pose (GPU via rtmlib/ONNX). Zone heuristics available as fallback.
 - **Scene cut labeler**: `tools/label_scene_cuts.py` with `--dir` and `--auto-classify` flags. 118 hand-labeled videos in `data/labels/scene_cuts/`.
+- **Full pipeline docs**: `docs/pipeline.md` — end-to-end documentation of all stages.
 
 ### In Progress / Next Priority
 - **Batch pose test on full 1744 videos**: `tools/test_pitcher_pose.py` now supports `--video-dir` for custom directories and nested `{Stadium}/{Season}/` structure. Run with: `--batch --video-dir data/videos/pitcher_calibration_cropped --per-stadium 1 --max-frames 200`
@@ -52,6 +54,7 @@ This fixes file read/write tool issues.
 - RTMPose-X backend auto-adds cuDNN DLLs to PATH (pip nvidia-cudnn-cu12) — no manual PATH config needed
 - YOLO now runs on GPU by default in player_pose.py; MediaPipeBackend still available for fallback
 - `test_pitcher_pose.py --batch` defaults to `2023_cropped/`; use `--video-dir` for other directories
+- Pitcher classifier auto-loads from `models/pitcher_classifier/best.pt`; falls back to zone heuristics if not found
 
 ### Key Data
 - `data/videos/pitcher_calibration/` — 1749 raw videos (30 stadiums x 3 seasons)
@@ -59,6 +62,8 @@ This fixes file read/write tool issues.
 - `data/pitcher_zones.json` — per-stadium calibrated pitcher zones (30 stadiums)
 - `data/pitcher_calibration_metadata.json` — metadata for all downloaded videos
 - `data/labels/scene_cuts/scene_cut_labels.json` — 118 hand-labeled videos
+- `data/labels/pitcher/pitcher_labels.json` — 6,040 labeled crops (759 pitcher, 5,281 not_pitcher)
 - `models/camera_classifier/best.pt` — EfficientNet-B0 camera classifier (97.7% acc)
+- `models/pitcher_classifier/best.pt` — EfficientNet-B0 pitcher classifier (100% acc)
 - `data/debug/pitcher_zones_report/` — calibration visualizations (4 plots)
 - `models/rtmpose/end2end.onnx` — RTMPose-X body model (384x288, ONNX)
