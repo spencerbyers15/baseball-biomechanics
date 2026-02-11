@@ -1,11 +1,12 @@
 """Player detection and pose estimation using YOLO + RTMPose.
 
 Detects players by role (pitcher, batter) using YOLO person detection
-with spatial heuristics, then extracts 17-landmark poses via RTMPose-X
-(GPU-accelerated ONNX through rtmlib).
+with an EfficientNet-B0 pitcher classifier (preferred) or spatial heuristics
+(fallback), then extracts 17-landmark poses via RTMPose-X (GPU-accelerated
+ONNX through rtmlib).
 
 Supports per-stadium calibrated pitcher zones (from pitcher_zones.json)
-for improved detection, with distance-based scoring and temporal smoothing.
+as fallback when no classifier model is available.
 """
 
 import json
@@ -69,6 +70,8 @@ class PlayerPoseDetector:
         min_crop_h: int = 30,
         pitcher_zones_path: Optional[str] = None,
         stadium: Optional[str] = None,
+        pitcher_classifier_path: Optional[str] = None,
+        use_pitcher_classifier: bool = True,
     ):
         """Initialize the detector.
 
@@ -82,6 +85,10 @@ class PlayerPoseDetector:
                 for data/pitcher_zones.json relative to project root.
             stadium: Stadium name for zone lookup (e.g. "Dodger Stadium"
                 or "Dodger_Stadium"). If None, uses default hard-coded zone.
+            pitcher_classifier_path: Path to pitcher classifier model. If None,
+                looks for models/pitcher_classifier/best.pt relative to project root.
+            use_pitcher_classifier: If True (default), try to load the pitcher
+                classifier. Falls back to zone heuristics if model not found.
         """
         self.yolo_model_name = yolo_model
         self.person_conf = person_conf
@@ -91,6 +98,9 @@ class PlayerPoseDetector:
 
         self._yolo = None
         self._pose_backend = None
+        self._pitcher_classifier = None
+        self._use_pitcher_classifier = use_pitcher_classifier
+        self._pitcher_classifier_path = pitcher_classifier_path
 
         # Calibrated zone support
         self._zones: Dict[str, dict] = {}
@@ -107,6 +117,36 @@ class PlayerPoseDetector:
         self._load_zones(pitcher_zones_path)
         if stadium:
             self.set_stadium(stadium)
+
+        # Try to load pitcher classifier
+        if use_pitcher_classifier:
+            self._load_pitcher_classifier(pitcher_classifier_path)
+
+    def _load_pitcher_classifier(self, path: Optional[str] = None):
+        """Try to load the pitcher classifier model.
+
+        Falls back silently to zone heuristics if model file not found.
+        """
+        if path is None:
+            project_root = Path(__file__).resolve().parent.parent.parent
+            path = str(project_root / "models" / "pitcher_classifier" / "best.pt")
+
+        classifier_path = Path(path)
+        if not classifier_path.exists():
+            logger.debug(f"No pitcher classifier at {path}, using zone heuristics")
+            return
+
+        try:
+            from src.filtering.pitcher_classifier import PitcherClassifier
+            self._pitcher_classifier = PitcherClassifier(
+                model_path=str(classifier_path),
+                device="cuda",
+            )
+            self._pitcher_classifier.initialize()
+            logger.info("Pitcher classifier loaded — using classifier-based selection")
+        except Exception as e:
+            logger.warning(f"Failed to load pitcher classifier: {e}")
+            self._pitcher_classifier = None
 
     def _load_zones(self, path: Optional[str] = None):
         """Load pitcher zones from JSON file."""
@@ -215,16 +255,57 @@ class PlayerPoseDetector:
         return candidates
 
     def _find_pitcher(
-        self, candidates: List[Dict[str, Any]]
+        self, candidates: List[Dict[str, Any]], frame: np.ndarray = None,
     ) -> Optional[Dict[str, Any]]:
         """Select the pitcher from detected persons.
 
-        Uses calibrated zone + distance scoring if available,
-        otherwise falls back to the original hard-coded heuristic.
+        Priority: classifier (if available) > calibrated zone > default heuristic.
         """
+        if self._pitcher_classifier is not None and frame is not None:
+            result = self._find_pitcher_classified(candidates, frame)
+            if result is not None:
+                return result
+            # Classifier found no pitcher — fall through to heuristics
+
         if self._active_zone:
             return self._find_pitcher_calibrated(candidates)
         return self._find_pitcher_default(candidates)
+
+    def _find_pitcher_classified(
+        self, candidates: List[Dict[str, Any]], frame: np.ndarray,
+    ) -> Optional[Dict[str, Any]]:
+        """Select pitcher using the trained EfficientNet-B0 classifier.
+
+        Crops each candidate, classifies all crops in one batch, and picks
+        the highest-confidence pitcher prediction.
+        """
+        # Crop each candidate
+        crops = []
+        valid_indices = []
+        for i, c in enumerate(candidates):
+            crop_result = self._crop_person(frame, c["bbox"])
+            if crop_result is not None:
+                crops.append(crop_result[0])  # just the image
+                valid_indices.append(i)
+
+        if not crops:
+            return None
+
+        # Classify all crops in one batch
+        results = self._pitcher_classifier.classify_crops_batch(crops)
+
+        # Pick highest-confidence pitcher
+        best = None
+        best_conf = 0.0
+        for idx, (label, conf) in zip(valid_indices, results):
+            if label == "pitcher" and conf > best_conf:
+                best = candidates[idx]
+                best_conf = conf
+
+        if best is not None:
+            logger.debug(f"Classifier picked pitcher with conf={best_conf:.3f}")
+
+        return best
 
     def _find_pitcher_default(
         self, candidates: List[Dict[str, Any]]
@@ -331,7 +412,7 @@ class PlayerPoseDetector:
         return filtered[0]
 
     def _find_pitcher_with_temporal(
-        self, candidates: List[Dict[str, Any]]
+        self, candidates: List[Dict[str, Any]], frame: np.ndarray = None,
     ) -> Optional[Dict[str, Any]]:
         """Select pitcher with temporal smoothing.
 
@@ -340,7 +421,7 @@ class PlayerPoseDetector:
         Falls back to standard _find_pitcher if no prior position.
         """
         # Try spatial selection first
-        spatial_pick = self._find_pitcher(candidates)
+        spatial_pick = self._find_pitcher(candidates, frame)
 
         # If no previous position, just use spatial result
         if self._prev_pitcher_cx is None:
@@ -463,9 +544,9 @@ class PlayerPoseDetector:
             return result
 
         if use_temporal:
-            pitcher = self._find_pitcher_with_temporal(candidates)
+            pitcher = self._find_pitcher_with_temporal(candidates, frame)
         else:
-            pitcher = self._find_pitcher(candidates)
+            pitcher = self._find_pitcher(candidates, frame)
 
         if pitcher is None:
             return result
@@ -550,4 +631,5 @@ class PlayerPoseDetector:
             self._pose_backend.cleanup()
             self._pose_backend = None
         self._yolo = None
+        self._pitcher_classifier = None
         self.reset_temporal()
