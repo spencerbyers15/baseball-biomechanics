@@ -1,14 +1,17 @@
 #!/usr/bin/env python
 """
-Train EfficientNet-B0 binary classifier for pitcher identification.
+Train EfficientNet-B0 classifier for player role identification.
 
-Fine-tunes a pretrained EfficientNet-B0 to classify person crops as
-"pitcher" or "not_pitcher".
+Fine-tunes a pretrained EfficientNet-B0. Auto-detects number of classes
+from the ImageFolder structure (2-class binary or 4-class multiclass).
+
+Binary (2-class):  pitcher / not_pitcher -> models/pitcher_classifier/
+Multiclass (4-class): pitcher / catcher / batter / other -> models/player_classifier/
 
 Expects ImageFolder structure from prepare_pitcher_training.py:
     data/labels/pitcher/frames/
-        train/pitcher/  train/not_pitcher/
-        test/pitcher/   test/not_pitcher/
+        train/{classes}/
+        test/{classes}/
 
 Usage:
     python tools/train_pitcher_classifier.py
@@ -28,7 +31,8 @@ from torchvision import datasets, transforms, models
 
 PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
 DATA_DIR = PROJECT_ROOT / "data/labels/pitcher/frames"
-MODEL_DIR = PROJECT_ROOT / "models/pitcher_classifier"
+BINARY_MODEL_DIR = PROJECT_ROOT / "models/pitcher_classifier"
+MULTI_MODEL_DIR = PROJECT_ROOT / "models/player_classifier"
 
 
 def get_transforms(train: bool):
@@ -107,9 +111,10 @@ def evaluate(model, loader, criterion, device):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Train pitcher classifier")
+    parser = argparse.ArgumentParser(description="Train player role classifier")
     parser.add_argument("--data", type=Path, default=DATA_DIR)
-    parser.add_argument("--model-dir", type=Path, default=MODEL_DIR)
+    parser.add_argument("--model-dir", type=Path, default=None,
+                        help="Output dir (auto: pitcher_classifier or player_classifier)")
     parser.add_argument("--epochs", type=int, default=12)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=3e-4)
@@ -127,7 +132,15 @@ def main():
     test_dataset = datasets.ImageFolder(args.data / "test", transform=get_transforms(False))
 
     class_names = train_dataset.classes
-    print(f"Classes: {class_names}")
+    n_classes = len(class_names)
+    is_multiclass = n_classes > 2
+
+    # Auto-select model dir if not specified
+    if args.model_dir is None:
+        args.model_dir = MULTI_MODEL_DIR if is_multiclass else BINARY_MODEL_DIR
+
+    print(f"Classes ({n_classes}): {class_names} {'(multiclass)' if is_multiclass else '(binary)'}")
+    print(f"Model dir: {args.model_dir}")
     print(f"  class_to_idx: {train_dataset.class_to_idx}")
     print(f"Train: {len(train_dataset)} images")
     print(f"Test:  {len(test_dataset)} images")
@@ -153,11 +166,11 @@ def main():
             param.requires_grad = False
         print("Backbone frozen — only training classifier head")
 
-    # Replace classifier for binary
+    # Replace classifier head for N classes
     in_features = model.classifier[1].in_features
     model.classifier = nn.Sequential(
         nn.Dropout(p=0.3, inplace=True),
-        nn.Linear(in_features, len(class_names)),
+        nn.Linear(in_features, n_classes),
     )
     model = model.to(device)
 
@@ -174,7 +187,8 @@ def main():
     history = []
 
     print(f"\n{'='*60}")
-    print(f"TRAINING: EfficientNet-B0 Pitcher Classifier | {args.epochs} epochs | lr={args.lr}")
+    mode_str = f"{n_classes}-class" if is_multiclass else "binary"
+    print(f"TRAINING: EfficientNet-B0 Player Classifier ({mode_str}) | {args.epochs} epochs | lr={args.lr}")
     print(f"{'='*60}\n")
 
     for epoch in range(args.epochs):

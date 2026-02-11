@@ -123,8 +123,10 @@ Runs on cropped player bounding boxes (not full frame) for accuracy and speed.
 - **GPU**: Auto-adds cuDNN DLLs to PATH via `_ensure_cudnn_on_path()`
 
 ### Performance
-- With calibrated zones: **96.1% mean detection, 96.1% mean pose, 100% median** (30 stadiums)
-- Tested via `tools/test_pitcher_pose.py --batch --per-stadium 1`
+- **99.9% mean detection, 99.9% mean pose, 100% median** on 50 random videos across 26 stadiums
+- 47/50 videos at 100%/100%, worst case 97.3% (Fenway Park)
+- ~11.3s per video (200 frames) on RTX 2070 — ~56ms/frame including YOLO + classifier + pose
+- Tested via `tools/test_pitcher_pose.py --batch --video-dir data/videos/pitcher_calibration_cropped --random 50 --max-frames 200`
 
 ### Environment notes
 - Install rtmlib with `--no-deps` to avoid pulling CPU onnxruntime / conflicting opencv

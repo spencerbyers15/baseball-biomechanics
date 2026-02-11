@@ -12,6 +12,7 @@ as fallback when no classifier model is available.
 import json
 import logging
 import math
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -72,6 +73,7 @@ class PlayerPoseDetector:
         stadium: Optional[str] = None,
         pitcher_classifier_path: Optional[str] = None,
         use_pitcher_classifier: bool = True,
+        detect_interval: int = 1,
     ):
         """Initialize the detector.
 
@@ -89,12 +91,17 @@ class PlayerPoseDetector:
                 looks for models/pitcher_classifier/best.pt relative to project root.
             use_pitcher_classifier: If True (default), try to load the pitcher
                 classifier. Falls back to zone heuristics if model not found.
+            detect_interval: Run YOLO+classifier every N frames (default 1 = every
+                frame). Intermediate frames get linearly interpolated bboxes between
+                the previous and next keyframe detections. Set to 3 to skip detection
+                on 2/3 of frames. Call flush_buffer() after the last video frame.
         """
         self.yolo_model_name = yolo_model
         self.person_conf = person_conf
         self.crop_padding = crop_padding
         self.min_crop_w = min_crop_w
         self.min_crop_h = min_crop_h
+        self.detect_interval = detect_interval
 
         self._yolo = None
         self._pose_backend = None
@@ -110,8 +117,16 @@ class PlayerPoseDetector:
         # Temporal smoothing state
         self._prev_pitcher_cx: Optional[float] = None
         self._prev_pitcher_cy: Optional[float] = None
+        self._prev_bbox: Optional[Tuple[float, float, float, float]] = None
         self._frames_without_pitcher: int = 0
         self._temporal_reset_threshold: int = 10  # Reset after N consecutive misses
+        self._temporal_radius: float = 0.08  # Primary match radius
+        self._max_jump_radius: float = 0.15  # Max allowed jump before rejection
+        self._bbox_ema_alpha: float = 0.7  # EMA blend: 0.7 new + 0.3 old
+
+        # Bbox interpolation buffer (used when detect_interval > 1)
+        self._frame_buffer: List[Tuple[np.ndarray, int]] = []  # (frame, frame_number)
+        self._last_keyframe_bbox: Optional[Tuple[float, float, float, float]] = None
 
         # Load zones
         self._load_zones(pitcher_zones_path)
@@ -195,7 +210,10 @@ class PlayerPoseDetector:
         """Reset temporal smoothing state."""
         self._prev_pitcher_cx = None
         self._prev_pitcher_cy = None
+        self._prev_bbox = None
         self._frames_without_pitcher = 0
+        self._frame_buffer.clear()
+        self._last_keyframe_bbox = None
 
     def _load_yolo(self):
         """Lazy-load YOLO model on GPU."""
@@ -411,43 +429,55 @@ class PlayerPoseDetector:
         filtered.sort(key=lambda c: c["_distance"])
         return filtered[0]
 
+    def _centroid_distance(self, candidate: Dict[str, Any]) -> float:
+        """Normalized distance from candidate centroid to previous pitcher position."""
+        dx = candidate["cx_norm"] - self._prev_pitcher_cx
+        dy = candidate["cy_norm"] - self._prev_pitcher_cy
+        return math.sqrt(dx * dx + dy * dy)
+
+    def _update_temporal(self, pick: Dict[str, Any]):
+        """Update temporal tracking state with accepted candidate."""
+        self._prev_pitcher_cx = pick["cx_norm"]
+        self._prev_pitcher_cy = pick["cy_norm"]
+        self._frames_without_pitcher = 0
+
+    def _handle_miss(self):
+        """Handle a frame where no pitcher was accepted."""
+        self._frames_without_pitcher += 1
+        if self._frames_without_pitcher >= self._temporal_reset_threshold:
+            self.reset_temporal()
+
     def _find_pitcher_with_temporal(
         self, candidates: List[Dict[str, Any]], frame: np.ndarray = None,
     ) -> Optional[Dict[str, Any]]:
-        """Select pitcher with temporal smoothing.
+        """Select pitcher with temporal smoothing and jump rejection.
 
         If a pitcher was found in the previous frame, strongly prefer
         a candidate near the same position (temporal continuity).
+        Rejects candidates that jump too far from the previous position
+        to prevent the bounding box from snapping to a different person.
         Falls back to standard _find_pitcher if no prior position.
         """
-        # Try spatial selection first
+        # Try spatial selection first (classifier or zone)
         spatial_pick = self._find_pitcher(candidates, frame)
 
         # If no previous position, just use spatial result
         if self._prev_pitcher_cx is None:
             if spatial_pick:
-                self._prev_pitcher_cx = spatial_pick["cx_norm"]
-                self._prev_pitcher_cy = spatial_pick["cy_norm"]
-                self._frames_without_pitcher = 0
+                self._update_temporal(spatial_pick)
             else:
-                self._frames_without_pitcher += 1
-                if self._frames_without_pitcher >= self._temporal_reset_threshold:
-                    self.reset_temporal()
+                self._handle_miss()
             return spatial_pick
 
-        # We have a previous pitcher position — check for temporal continuity
-        # Look for any candidate near the previous position
-        temporal_radius = 0.08  # Normalized distance threshold
-
+        # We have a previous pitcher position — enforce temporal continuity
         # Filter fans in stands
         field = [c for c in candidates if c["cy_norm"] >= 0.20]
 
+        # Look for any candidate near the previous position (tight radius)
         temporal_candidates = []
         for c in field:
-            dx = c["cx_norm"] - self._prev_pitcher_cx
-            dy = c["cy_norm"] - self._prev_pitcher_cy
-            dist = math.sqrt(dx * dx + dy * dy)
-            if dist < temporal_radius:
+            dist = self._centroid_distance(c)
+            if dist < self._temporal_radius:
                 c["_temporal_dist"] = dist
                 temporal_candidates.append(c)
 
@@ -455,22 +485,25 @@ class PlayerPoseDetector:
             # Pick closest to previous position
             temporal_candidates.sort(key=lambda c: c["_temporal_dist"])
             pick = temporal_candidates[0]
-            self._prev_pitcher_cx = pick["cx_norm"]
-            self._prev_pitcher_cy = pick["cy_norm"]
-            self._frames_without_pitcher = 0
+            self._update_temporal(pick)
             return pick
 
-        # No temporal match — use spatial pick and update position
+        # No temporal match — check if spatial pick is within max jump radius
         if spatial_pick:
-            self._prev_pitcher_cx = spatial_pick["cx_norm"]
-            self._prev_pitcher_cy = spatial_pick["cy_norm"]
-            self._frames_without_pitcher = 0
-        else:
-            self._frames_without_pitcher += 1
-            if self._frames_without_pitcher >= self._temporal_reset_threshold:
-                self.reset_temporal()
+            dist = self._centroid_distance(spatial_pick)
+            if dist < self._max_jump_radius:
+                self._update_temporal(spatial_pick)
+                return spatial_pick
+            else:
+                # Spatial pick is too far — likely a different person, reject
+                logger.debug(
+                    f"Rejected pitcher jump: dist={dist:.3f} > max={self._max_jump_radius}"
+                )
+                self._handle_miss()
+                return None
 
-        return spatial_pick
+        self._handle_miss()
+        return None
 
     def _crop_person(
         self, frame: np.ndarray, bbox: Tuple[float, float, float, float]
@@ -516,6 +549,158 @@ class PlayerPoseDetector:
 
         return pose_result
 
+    @staticmethod
+    def _interpolate_bbox(
+        bbox_a: Tuple[float, float, float, float],
+        bbox_b: Tuple[float, float, float, float],
+        t: float,
+    ) -> Tuple[float, float, float, float]:
+        """Linearly interpolate between two bboxes. t in [0, 1]."""
+        return tuple(a + t * (b - a) for a, b in zip(bbox_a, bbox_b))
+
+    def _detect_frame_full(
+        self,
+        frame: np.ndarray,
+        frame_number: int,
+        use_temporal: bool,
+        t0: float,
+    ) -> Dict[str, Any]:
+        """Run full YOLO + classifier + pose pipeline on a single frame.
+
+        This is the core detection logic, called for every frame when
+        detect_interval=1, or only on keyframes when detect_interval>1.
+        """
+        result = {"pitcher": None, "timing": {}}
+
+        t1_start = time.perf_counter()
+        candidates = self._detect_persons(frame)
+        t1 = time.perf_counter()
+        result["timing"]["yolo_detect_ms"] = (t1 - t1_start) * 1000
+
+        if not candidates:
+            if use_temporal:
+                self._frames_without_pitcher += 1
+                if self._frames_without_pitcher >= self._temporal_reset_threshold:
+                    self.reset_temporal()
+            result["timing"]["total_ms"] = (time.perf_counter() - t0) * 1000
+            return result
+
+        t2 = time.perf_counter()
+        if use_temporal:
+            pitcher = self._find_pitcher_with_temporal(candidates, frame)
+        else:
+            pitcher = self._find_pitcher(candidates, frame)
+        t3 = time.perf_counter()
+        result["timing"]["find_pitcher_ms"] = (t3 - t2) * 1000
+
+        if pitcher is None:
+            result["timing"]["total_ms"] = (time.perf_counter() - t0) * 1000
+            return result
+
+        # EMA-smooth the bounding box to prevent jitter
+        raw_bbox = pitcher["bbox"]
+        if use_temporal and self._prev_bbox is not None:
+            a = self._bbox_ema_alpha
+            smoothed = tuple(
+                a * new + (1 - a) * old
+                for new, old in zip(raw_bbox, self._prev_bbox)
+            )
+            self._prev_bbox = smoothed
+        else:
+            smoothed = raw_bbox
+            self._prev_bbox = raw_bbox
+
+        crop_result = self._crop_person(frame, smoothed)
+        if crop_result is None:
+            result["timing"]["total_ms"] = (time.perf_counter() - t0) * 1000
+            return result
+
+        crop, cx1, cy1 = crop_result
+
+        t4 = time.perf_counter()
+        pose = self._run_pose_on_crop(crop, cx1, cy1, frame_number)
+        t5 = time.perf_counter()
+        result["timing"]["pose_ms"] = (t5 - t4) * 1000
+        result["timing"]["total_ms"] = (t5 - t0) * 1000
+
+        result["pitcher"] = {
+            "pose": pose,
+            "bbox": smoothed,
+            "conf": pitcher["conf"],
+        }
+
+        return result
+
+    def _process_buffered_frames(
+        self, target_bbox: Optional[Tuple[float, float, float, float]],
+    ) -> List[Tuple[int, Dict[str, Any]]]:
+        """Process buffered intermediate frames with linearly interpolated bboxes.
+
+        Interpolates between _last_keyframe_bbox and target_bbox, runs pose on
+        each buffered frame with the interpolated bbox.
+
+        Args:
+            target_bbox: The bbox detected on the current keyframe.
+
+        Returns:
+            List of (frame_number, result_dict) tuples for each buffered frame.
+        """
+        if not self._frame_buffer or self._last_keyframe_bbox is None:
+            return []
+
+        prev_bbox = self._last_keyframe_bbox
+        # If current keyframe has no detection, extrapolate with previous bbox
+        end_bbox = target_bbox if target_bbox is not None else prev_bbox
+        n_buffered = len(self._frame_buffer)
+        total_steps = n_buffered + 1  # intervals from prev keyframe to current
+
+        deferred = []
+        for i, (buf_frame, buf_frame_num) in enumerate(self._frame_buffer):
+            t = (i + 1) / total_steps
+            interp_bbox = self._interpolate_bbox(prev_bbox, end_bbox, t)
+
+            buf_result = {"pitcher": None, "timing": {}}
+            tb0 = time.perf_counter()
+            crop_result = self._crop_person(buf_frame, interp_bbox)
+            if crop_result is not None:
+                crop, cx1, cy1 = crop_result
+                tb1 = time.perf_counter()
+                pose = self._run_pose_on_crop(crop, cx1, cy1, buf_frame_num)
+                tb2 = time.perf_counter()
+                buf_result["pitcher"] = {
+                    "pose": pose,
+                    "bbox": interp_bbox,
+                    "conf": -1.0,
+                }
+                buf_result["timing"] = {
+                    "yolo_detect_ms": 0.0,
+                    "find_pitcher_ms": 0.0,
+                    "pose_ms": (tb2 - tb1) * 1000,
+                    "total_ms": (tb2 - tb0) * 1000,
+                    "skipped_detect": True,
+                    "interpolated": True,
+                }
+            deferred.append((buf_frame_num, buf_result))
+
+        return deferred
+
+    def flush_buffer(self) -> List[Tuple[int, Dict[str, Any]]]:
+        """Process any remaining buffered frames at end of video.
+
+        Uses the last keyframe bbox (no interpolation target available).
+        Call this after the last frame of a video to ensure all frames are processed.
+
+        Returns:
+            List of (frame_number, result_dict) tuples for each buffered frame.
+        """
+        if not self._frame_buffer:
+            return []
+
+        # No next keyframe — use last keyframe bbox for all remaining frames
+        deferred = self._process_buffered_frames(self._last_keyframe_bbox)
+        self._frame_buffer.clear()
+        return deferred
+
     def detect_frame(
         self,
         frame: np.ndarray,
@@ -524,47 +709,59 @@ class PlayerPoseDetector:
     ) -> Dict[str, Any]:
         """Detect pitcher and extract pose from a single frame.
 
+        When detect_interval > 1, intermediate frames are buffered and processed
+        with linearly interpolated bboxes when the next keyframe arrives. The
+        result dict includes a 'deferred_results' key containing a list of
+        (frame_number, result_dict) tuples for the processed buffered frames.
+
+        Call flush_buffer() after the last frame to process remaining buffered frames.
+
         Args:
             frame: BGR frame from OpenCV.
             frame_number: Frame index.
             use_temporal: If True, use temporal smoothing for pitcher selection.
 
         Returns:
-            Dict with 'pitcher' key mapping to result dict or None.
-            Result dict has keys: pose (PoseResult), bbox (x1,y1,x2,y2), conf (float).
+            Dict with keys:
+                - 'pitcher': result dict or None (pose, bbox, conf)
+                - 'timing': timing breakdown dict
+                - '_buffered': True if frame was buffered (intermediate frame)
+                - 'deferred_results': list of (frame_number, result) for processed
+                  buffered frames (only present on keyframe results)
         """
-        result = {"pitcher": None}
+        t0 = time.perf_counter()
 
-        candidates = self._detect_persons(frame)
-        if not candidates:
-            if use_temporal:
-                self._frames_without_pitcher += 1
-                if self._frames_without_pitcher >= self._temporal_reset_threshold:
-                    self.reset_temporal()
-            return result
+        # No subsampling — process every frame directly
+        if self.detect_interval <= 1:
+            return self._detect_frame_full(frame, frame_number, use_temporal, t0)
 
-        if use_temporal:
-            pitcher = self._find_pitcher_with_temporal(candidates, frame)
-        else:
-            pitcher = self._find_pitcher(candidates, frame)
+        is_keyframe = (frame_number % self.detect_interval == 0)
 
-        if pitcher is None:
-            return result
+        if not is_keyframe:
+            # Intermediate frame: buffer for later interpolation
+            self._frame_buffer.append((frame.copy(), frame_number))
+            return {"pitcher": None, "timing": {}, "_buffered": True}
 
-        crop_result = self._crop_person(frame, pitcher["bbox"])
-        if crop_result is None:
-            return result
+        # --- Keyframe: run full detection ---
+        keyframe_result = self._detect_frame_full(
+            frame, frame_number, use_temporal, t0,
+        )
 
-        crop, cx1, cy1 = crop_result
-        pose = self._run_pose_on_crop(crop, cx1, cy1, frame_number)
+        # Get the keyframe's detected bbox
+        current_bbox = None
+        if keyframe_result["pitcher"] is not None:
+            current_bbox = keyframe_result["pitcher"]["bbox"]
 
-        result["pitcher"] = {
-            "pose": pose,
-            "bbox": pitcher["bbox"],
-            "conf": pitcher["conf"],
-        }
+        # Process buffered intermediate frames with interpolated bboxes
+        deferred = self._process_buffered_frames(current_bbox)
+        self._frame_buffer.clear()
 
-        return result
+        # Update last keyframe bbox for next interval
+        if current_bbox is not None:
+            self._last_keyframe_bbox = current_bbox
+
+        keyframe_result["deferred_results"] = deferred
+        return keyframe_result
 
     def visualize(
         self,

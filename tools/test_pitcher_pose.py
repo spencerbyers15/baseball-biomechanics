@@ -20,6 +20,7 @@ Usage:
 import argparse
 import json
 import logging
+import random
 import sys
 from pathlib import Path
 
@@ -41,6 +42,21 @@ logger = logging.getLogger(__name__)
 OUTPUT_DIR = project_root / "data" / "debug" / "pitcher_pose_test"
 
 
+def _count_result(result: dict) -> tuple:
+    """Count detection/pose stats from a single frame result.
+
+    Returns (detected, pose_valid) — each 0 or 1.
+    """
+    pitcher = result.get("pitcher")
+    if pitcher is None:
+        return 0, 0
+    detected = 1
+    pose_valid = 0
+    if pitcher["pose"] and pitcher["pose"].is_valid and len(pitcher["pose"].keypoints) > 0:
+        pose_valid = 1
+    return detected, pose_valid
+
+
 def test_single_video(
     detector: PlayerPoseDetector,
     video_path: str,
@@ -49,6 +65,10 @@ def test_single_video(
     use_temporal: bool = True,
 ) -> dict:
     """Run pitcher detection on every frame of a video.
+
+    When detect_interval > 1, intermediate frames are buffered and processed
+    with linearly interpolated bboxes when the next keyframe arrives. The
+    buffer is flushed at end of video.
 
     Args:
         detector: PlayerPoseDetector instance.
@@ -78,6 +98,7 @@ def test_single_video(
     detected_count = 0
     pose_valid_count = 0
     frame_num = 0
+    processed_frames = 0  # Tracks actual processed frames (including deferred)
     saved_frames = []
 
     # Reset temporal state for each new video
@@ -91,18 +112,26 @@ def test_single_video(
             break
 
         results = detector.detect_frame(frame, frame_num, use_temporal=use_temporal)
+
+        # Process deferred results from interpolated buffered frames
+        for def_frame_num, def_result in results.get("deferred_results", []):
+            d, p = _count_result(def_result)
+            detected_count += d
+            pose_valid_count += p
+            processed_frames += 1
+
+        # Process current frame result (skip if buffered for later)
+        if not results.get("_buffered"):
+            d, p = _count_result(results)
+            detected_count += d
+            pose_valid_count += p
+            processed_frames += 1
+
+        # Save annotated frame periodically (only non-buffered frames)
         pitcher = results.get("pitcher")
-
-        if pitcher is not None:
-            detected_count += 1
-            if pitcher["pose"] and pitcher["pose"].is_valid and len(pitcher["pose"].keypoints) > 0:
-                pose_valid_count += 1
-
-        # Save annotated frame periodically
-        if frame_num % save_every == 0:
+        if frame_num % save_every == 0 and not results.get("_buffered"):
             annotated = detector.visualize(frame, results)
 
-            # Add frame info text
             info = f"Frame {frame_num}"
             if pitcher:
                 info += f" | Pitcher conf={pitcher['conf']:.2f}"
@@ -124,13 +153,20 @@ def test_single_video(
         frame_num += 1
 
         if frame_num % 100 == 0:
-            det_rate = detected_count / frame_num * 100
+            det_rate = detected_count / max(processed_frames, 1) * 100
             logger.info(f"  Frame {frame_num}/{total_frames} — det rate: {det_rate:.1f}%")
+
+    # Flush remaining buffered frames at end of video
+    for def_frame_num, def_result in detector.flush_buffer():
+        d, p = _count_result(def_result)
+        detected_count += d
+        pose_valid_count += p
+        processed_frames += 1
 
     cap.release()
 
-    det_rate = detected_count / max(frame_num, 1) * 100
-    pose_rate = pose_valid_count / max(frame_num, 1) * 100
+    det_rate = detected_count / max(processed_frames, 1) * 100
+    pose_rate = pose_valid_count / max(processed_frames, 1) * 100
 
     # Build montage of saved frames (up to 12)
     montage_frames = saved_frames[:12]
@@ -140,6 +176,7 @@ def test_single_video(
     stats = {
         "video": video_name,
         "total_frames": frame_num,
+        "processed_frames": processed_frames,
         "pitcher_detected": detected_count,
         "pose_valid": pose_valid_count,
         "detection_rate": round(det_rate, 1),
@@ -149,7 +186,7 @@ def test_single_video(
 
     logger.info(
         f"  {video_name}: detection={det_rate:.1f}%, pose={pose_rate:.1f}% "
-        f"({detected_count}/{frame_num} frames)"
+        f"({detected_count}/{processed_frames} frames)"
     )
 
     return stats
@@ -233,9 +270,10 @@ def find_cropped_videos(base_dir: Path, per_stadium: int = 0) -> list:
 def run_batch(
     detector: PlayerPoseDetector,
     per_stadium: int = 1,
-    max_frames: int = 300,
+    max_frames: int = 0,
     use_temporal: bool = True,
     video_dir: str = "data/videos/2023_cropped",
+    random_n: int = 0,
 ):
     """Run batch test across all stadiums."""
     cropped_dir = project_root / video_dir
@@ -244,6 +282,11 @@ def run_batch(
         return
 
     videos = find_cropped_videos(cropped_dir, per_stadium=per_stadium)
+
+    if random_n > 0 and random_n < len(videos):
+        videos = random.sample(videos, random_n)
+        logger.info(f"Randomly sampled {random_n} videos from {len(find_cropped_videos(cropped_dir, per_stadium=per_stadium))}")
+
     logger.info(f"Found {len(videos)} videos across {len(set(v[0] for v in videos))} stadiums")
 
     all_stats = []
@@ -315,6 +358,10 @@ def main():
     parser.add_argument("--zones-path", type=str, help="Path to pitcher_zones.json (default: data/pitcher_zones.json)")
     parser.add_argument("--video-dir", type=str, default="data/videos/2023_cropped",
                         help="Video directory for batch mode (default: data/videos/2023_cropped)")
+    parser.add_argument("--random", type=int, default=0, dest="random_n",
+                        help="Randomly sample N videos from all found videos (0=all)")
+    parser.add_argument("--detect-interval", type=int, default=1,
+                        help="Run YOLO+classifier every N frames (default 1). Set to 3 to skip detection on 2/3 of frames.")
     args = parser.parse_args()
 
     if not args.video and not args.batch:
@@ -329,6 +376,7 @@ def main():
     if args.stadium:
         detector_kwargs["stadium"] = args.stadium
 
+    detector_kwargs["detect_interval"] = args.detect_interval
     detector = PlayerPoseDetector(**detector_kwargs)
 
     use_temporal = not args.no_temporal
@@ -349,6 +397,7 @@ def main():
             max_frames=args.max_frames,
             use_temporal=use_temporal,
             video_dir=args.video_dir,
+            random_n=args.random_n,
         )
 
     detector.cleanup()

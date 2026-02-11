@@ -1,8 +1,8 @@
 {
   "metadata": {
-    "total_videos": 88,
-    "labeled_videos": 88,
-    "total_cuts": 120
+    "total_videos": 32,
+    "labeled_videos": 118,
+    "total_cuts": 182
   },
   "videos": {
     "data/videos/pitcher_calibration/American_Family_Field/2023/MIL_COL_717065_43_2.mp4": {
@@ -485,7 +485,7 @@
       "season": "2025",
       "fps": 59.52358835834538,
       "total_frames": 356,
-      "threshold": 0.25,
+      "threshold": 0.08,
       "status": "labeled",
       "auto_detected": [],
       "false_positives": [],
@@ -1632,7 +1632,7 @@
       "season": "2023",
       "fps": 59.72375127062457,
       "total_frames": 566,
-      "threshold": 0.25,
+      "threshold": 0.08,
       "status": "labeled",
       "auto_detected": [
         249,
@@ -1814,6 +1814,696 @@
       ],
       "segment_labels": [
         "main_angle",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/American_Family_Field/2023/MIL_BAL_717849_24_2.mp4": {
+      "stadium": "American_Family_Field",
+      "season": "2023",
+      "fps": 59.59804725082849,
+      "total_frames": 446,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        329,
+        421
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        329,
+        421
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Angel_Stadium/2025/LAA_NYY_777728_63_1.mp4": {
+      "stadium": "Angel_Stadium",
+      "season": "2025",
+      "fps": 59.74574653551022,
+      "total_frames": 626,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        73,
+        237,
+        564
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        73,
+        237,
+        564
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Angel_Stadium/2025/LAA_WSH_777305_5_2.mp4": {
+      "stadium": "Angel_Stadium",
+      "season": "2025",
+      "fps": 59.741726884945756,
+      "total_frames": 852,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        248,
+        559
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        248,
+        559
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Busch_Stadium/2024/STL_COL_745169_76_4.mp4": {
+      "stadium": "Busch_Stadium",
+      "season": "2024",
+      "fps": 59.767984006530206,
+      "total_frames": 768,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        297,
+        660
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        297,
+        660
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Busch_Stadium/2024/STL_TB_745143_45_3.mp4": {
+      "stadium": "Busch_Stadium",
+      "season": "2024",
+      "fps": 59.73626084285359,
+      "total_frames": 726,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        346
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        346
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Citi_Field/2025/NYM_CLE_776846_61_2.mp4": {
+      "stadium": "Citi_Field",
+      "season": "2025",
+      "fps": 59.64344302367269,
+      "total_frames": 488,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        84,
+        243
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        84,
+        243
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Coors_Field/2023/COL_DET_717544_21_2.mp4": {
+      "stadium": "Coors_Field",
+      "season": "2023",
+      "fps": 59.77735701980355,
+      "total_frames": 864,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        299,
+        702
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        299,
+        702
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Coors_Field/2024/COL_BOS_746525_82_3.mp4": {
+      "stadium": "Coors_Field",
+      "season": "2024",
+      "fps": 59.79071070701462,
+      "total_frames": 914,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        117,
+        305
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        117,
+        305
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Coors_Field/2024/COL_MIL_746535_69_2.mp4": {
+      "stadium": "Coors_Field",
+      "season": "2024",
+      "fps": 59.761303394027024,
+      "total_frames": 800,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        156,
+        244,
+        648
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        156,
+        244,
+        648
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Coors_Field/2025/COL_SD_776431_79_5.mp4": {
+      "stadium": "Coors_Field",
+      "season": "2025",
+      "fps": 59.77326699549929,
+      "total_frames": 806,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        27,
+        247,
+        611
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        27,
+        247,
+        611
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Dodger_Stadium/2023/LAD_MIL_716962_43_2.mp4": {
+      "stadium": "Dodger_Stadium",
+      "season": "2023",
+      "fps": 59.75706328645012,
+      "total_frames": 846,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        311,
+        827
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        311,
+        827
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Dodger_Stadium/2025/LAD_SF_776256_46_3.mp4": {
+      "stadium": "Dodger_Stadium",
+      "season": "2025",
+      "fps": 59.60310167007162,
+      "total_frames": 436,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [],
+      "segment_labels": [
+        "main_angle"
+      ]
+    },
+    "data/videos/pitcher_calibration/Great_American_Ball_Park/2024/CIN_BAL_746720_58_3.mp4": {
+      "stadium": "Great_American_Ball_Park",
+      "season": "2024",
+      "fps": 59.72142328868436,
+      "total_frames": 646,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        160,
+        271,
+        532
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        160,
+        271,
+        532
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Great_American_Ball_Park/2025/CIN_CHC_777811_70_3.mp4": {
+      "stadium": "Great_American_Ball_Park",
+      "season": "2025",
+      "fps": 59.71948160444165,
+      "total_frames": 610,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        67,
+        247,
+        514
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        67,
+        247,
+        514
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Kauffman_Stadium/2025/KC_DET_776540_11_4.mp4": {
+      "stadium": "Kauffman_Stadium",
+      "season": "2025",
+      "fps": 59.77488677737323,
+      "total_frames": 718,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        247,
+        547,
+        680
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        247,
+        547,
+        680
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Nationals_Park/2025/WSH_SD_777112_45_2.mp4": {
+      "stadium": "Nationals_Park",
+      "season": "2025",
+      "fps": 59.680025403704086,
+      "total_frames": 568,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        158,
+        238,
+        546
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        158,
+        238,
+        546
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Oracle_Park/2024/SF_LAD_745319_54_1.mp4": {
+      "stadium": "Oracle_Park",
+      "season": "2024",
+      "fps": 59.72576063374723,
+      "total_frames": 702,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        275,
+        605
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        275,
+        605
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Oriole_Park/2023/BAL_DET_718495_60_4.mp4": {
+      "stadium": "Oriole_Park",
+      "season": "2023",
+      "fps": 59.69502883322317,
+      "total_frames": 582,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        248
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        248
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Oriole_Park/2023/BAL_MIA_717384_4_4.mp4": {
+      "stadium": "Oriole_Park",
+      "season": "2023",
+      "fps": 59.80346407035062,
+      "total_frames": 880,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        35,
+        247,
+        395,
+        505,
+        741,
+        815
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        35,
+        247,
+        395,
+        505,
+        741,
+        815
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other",
+        "other",
+        "other",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Oriole_Park/2023/BAL_STL_716636_81_3.mp4": {
+      "stadium": "Oriole_Park",
+      "season": "2023",
+      "fps": 59.72751999085199,
+      "total_frames": 650,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        244
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        244
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Oriole_Park/2024/BAL_CWS_746990_2_4.mp4": {
+      "stadium": "Oriole_Park",
+      "season": "2024",
+      "fps": 59.723659575140424,
+      "total_frames": 756,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        45,
+        273
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        45,
+        273
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Oriole_Park/2025/BAL_NYY_776278_37_3.mp4": {
+      "stadium": "Oriole_Park",
+      "season": "2025",
+      "fps": 59.712779390886844,
+      "total_frames": 558,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        253
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        253
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/PNC_Park/2023/PIT_CHC_716870_7_2.mp4": {
+      "stadium": "PNC_Park",
+      "season": "2023",
+      "fps": 59.56476611426639,
+      "total_frames": 454,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        142,
+        245,
+        430
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        142,
+        245,
+        430
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/PNC_Park/2023/PIT_LAD_718432_75_2.mp4": {
+      "stadium": "PNC_Park",
+      "season": "2023",
+      "fps": 59.572437122337746,
+      "total_frames": 380,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        29
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        29
+      ],
+      "segment_labels": [
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/PNC_Park/2024/PIT_WSH_745453_20_3.mp4": {
+      "stadium": "PNC_Park",
+      "season": "2024",
+      "fps": 59.66150596357454,
+      "total_frames": 386,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [],
+      "segment_labels": [
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/T-Mobile_Park/2024/SEA_NYY_745205_64_1.mp4": {
+      "stadium": "T-Mobile_Park",
+      "season": "2024",
+      "fps": 59.773982579299286,
+      "total_frames": 844,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        237,
+        589
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        237,
+        589
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/T-Mobile_Park/2025/SEA_HOU_778398_23_6.mp4": {
+      "stadium": "T-Mobile_Park",
+      "season": "2025",
+      "fps": 59.731910314983594,
+      "total_frames": 594,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        222,
+        542
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        222,
+        542
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Target_Field/2023/MIN_LAA_716445_72_5.mp4": {
+      "stadium": "Target_Field",
+      "season": "2023",
+      "fps": 59.59435685114971,
+      "total_frames": 376,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [],
+      "segment_labels": [
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Truist_Park/2024/ATL_TB_747112_73_4.mp4": {
+      "stadium": "Truist_Park",
+      "season": "2024",
+      "fps": 59.79095859472679,
+      "total_frames": 966,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        319,
+        888
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        319,
+        888
+      ],
+      "segment_labels": [
+        "main_angle",
+        "other",
+        "other"
+      ]
+    },
+    "data/videos/pitcher_calibration/Yankee_Stadium/2024/NYY_MIN_745739_44_2.mp4": {
+      "stadium": "Yankee_Stadium",
+      "season": "2024",
+      "fps": 59.79073243647235,
+      "total_frames": 988,
+      "threshold": 0.08,
+      "status": "labeled",
+      "auto_detected": [
+        154,
+        326,
+        685
+      ],
+      "false_positives": [],
+      "false_negatives": [],
+      "cut_frames": [
+        154,
+        326,
+        685
+      ],
+      "segment_labels": [
+        "other",
+        "main_angle",
+        "other",
         "other"
       ]
     }

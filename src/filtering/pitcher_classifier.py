@@ -1,7 +1,8 @@
-"""Pitcher classification using fine-tuned EfficientNet-B0.
+"""Player role classification using fine-tuned EfficientNet-B0.
 
-Classifies person crops as 'pitcher' or 'not_pitcher'. Used to replace
-spatial heuristics in the pitcher detection pipeline.
+Classifies person crops by role. Supports both binary (pitcher/not_pitcher)
+and multiclass (pitcher/catcher/batter/other) checkpoints — auto-detected
+from the checkpoint's class_names. No API change: callers use label strings.
 
 Follows the same pattern as camera_filter.py (CameraAngleClassifier).
 """
@@ -19,7 +20,8 @@ from torchvision import transforms, models
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
-DEFAULT_MODEL_PATH = PROJECT_ROOT / "models/pitcher_classifier/best.pt"
+MULTI_MODEL_PATH = PROJECT_ROOT / "models/player_classifier/best.pt"
+BINARY_MODEL_PATH = PROJECT_ROOT / "models/pitcher_classifier/best.pt"
 
 # Inference transform — must match training
 _transform = transforms.Compose([
@@ -30,11 +32,23 @@ _transform = transforms.Compose([
 ])
 
 
+def _find_default_model() -> Path:
+    """Find best available model: prefer multiclass, fall back to binary."""
+    if MULTI_MODEL_PATH.exists():
+        return MULTI_MODEL_PATH
+    return BINARY_MODEL_PATH
+
+
 class PitcherClassifier:
-    """EfficientNet-B0 binary classifier for pitcher identification."""
+    """EfficientNet-B0 classifier for player role identification.
+
+    Supports both binary (pitcher/not_pitcher) and multiclass
+    (pitcher/catcher/batter/other) checkpoints, auto-detected from
+    the checkpoint's class_names list.
+    """
 
     def __init__(self, model_path: str = None, device: str = None):
-        self.model_path = Path(model_path) if model_path else DEFAULT_MODEL_PATH
+        self.model_path = Path(model_path) if model_path else _find_default_model()
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
         self.class_names = None
@@ -45,7 +59,7 @@ class PitcherClassifier:
         if self._initialized:
             return
 
-        logger.info(f"Loading pitcher classifier from {self.model_path}")
+        logger.info(f"Loading player classifier from {self.model_path}")
         checkpoint = torch.load(self.model_path, map_location=self.device, weights_only=False)
 
         self.class_names = checkpoint["class_names"]
@@ -61,7 +75,7 @@ class PitcherClassifier:
         self.model.to(self.device)
         self.model.eval()
 
-        logger.info(f"Loaded pitcher classifier (classes: {self.class_names}, "
+        logger.info(f"Loaded player classifier ({len(self.class_names)}-class: {self.class_names}, "
                      f"test_acc: {checkpoint.get('test_acc', '?')}, device: {self.device})")
         self._initialized = True
 
@@ -72,7 +86,8 @@ class PitcherClassifier:
             crop_bgr: OpenCV BGR crop (numpy array)
 
         Returns:
-            (label, confidence) — label is 'pitcher' or 'not_pitcher',
+            (label, confidence) — label is a class name string
+            (e.g. 'pitcher', 'catcher', 'batter', 'other'),
             confidence is the softmax probability of the predicted class.
         """
         if not self._initialized:
