@@ -56,6 +56,39 @@ This fixes file read/write tool issues.
 - **Improve bat barrel detection**: Only 20% frame detection rate. YOLO-pose keypoint model on padded batter crop. Needs more diverse training data.
 - **Improve catcher mitt detection**: Only 38% frame detection rate. YOLOv8-small on padded catcher crop. Needs more training data (currently 527 frames).
 
+### Frame Extraction for CV Training
+
+**Any time we need frames to label for training a CV model, use `tools/frame_extractor.py`.**
+
+This is a general-purpose tool that scrubs videos, lets the user set a start/end range, then extracts evenly-spaced frames from that range for later labeling. It works for ball detection, bat barrel, catcher mitt, or anything else.
+
+**Interactive mode** (prompts for what to label, how many videos, frames per video):
+```
+C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py
+```
+
+**CLI mode** (skip prompts):
+```
+C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py --name ball --count 60 --frames 10
+C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py --name mitt --count 30 --frames 15
+```
+
+**Custom video sources** (instead of calibration pool):
+```
+C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py --videos path1.mp4 path2.mp4 --name ball
+C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py --dir data/videos/some_folder --name bat_barrel
+```
+
+**Re-run specific videos**:
+```
+C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py --name ball --count 60 --redo VIDEO_ID
+```
+
+- Default video source: 1744 cropped calibration videos, sampled balanced by stadium + LHP/RHP
+- Output: `data/labels/{name}/frames/` with session file for resume
+- Sessions are per-name so ball/bat/mitt extractions don't collide
+- UI keys: SPACE (set start/end), P (play), ENTER (confirm), N (skip), B (back), ESC (save & quit)
+
 ### Critical Rules
 - `crop_to_main_angle` has its OWN `cut_threshold` param — must match `detect_scene_cuts` (both 0.08)
 - When updating thresholds, check ALL functions that pass threshold values
