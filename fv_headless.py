@@ -43,8 +43,13 @@ except ImportError:
 
 FIND_POSER_JS = """
 () => {
+    // mlb.com Gameday redesign (~2026-05) renamed the FieldVision wrapper
+    // to "DynamicFieldVision..." and removed the 2D→3D toggle. Use a
+    // case-insensitive partial match so we catch all variants.
+    // (Fix 2026-05-06.)
     const fvDiv = document.querySelector('[class*="FieldVisionPlayerContainer"]')
-                || document.querySelector('[class*="FieldVisionApp"]');
+                || document.querySelector('[class*="FieldVisionApp"]')
+                || document.querySelector('[class*="FieldVision" i]');
     if (!fvDiv) return { ready: false, reason: 'no_fv_container' };
     
     const fk = Object.keys(fvDiv).find(k => k.startsWith('__reactFiber'));
@@ -225,8 +230,11 @@ async def capture_game(game_url: str, duration: int, output_dir: Path, headless:
         
         # ── Navigate and wait for page load ──
         print("Loading page...")
-        await page.goto(game_url, wait_until='networkidle', timeout=30000)
-        await page.wait_for_timeout(3000)
+        # mlb.com keeps long-poll/websocket connections open continuously,
+        # so wait_until='networkidle' never resolves. Use 'domcontentloaded'
+        # and rely on FIND_POSER_JS polling for readiness. (Fix 2026-05-06.)
+        await page.goto(game_url, wait_until='domcontentloaded', timeout=60000)
+        await page.wait_for_timeout(5000)
         
         # ── Click 3D button if needed ──
         try:

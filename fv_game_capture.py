@@ -46,8 +46,13 @@ except ImportError:
 
 FIND_POSER_JS = """
 () => {
+    // mlb.com Gameday redesign (~2026-05) renamed the FieldVision wrapper
+    // to "DynamicFieldVision..." and removed the 2D→3D toggle. Use a
+    // case-insensitive partial match so we catch all variants.
+    // (Fix 2026-05-06.)
     const fvDiv = document.querySelector('[class*="FieldVisionPlayerContainer"]')
-                || document.querySelector('[class*="FieldVisionApp"]');
+                || document.querySelector('[class*="FieldVisionApp"]')
+                || document.querySelector('[class*="FieldVision" i]');
     if (!fvDiv) return { ready: false, reason: 'no_fv_container' };
     const fk = Object.keys(fvDiv).find(k => k.startsWith('__reactFiber'));
     if (!fk) return { ready: false, reason: 'no_fiber' };
@@ -248,18 +253,84 @@ class GameCapture:
 
                 # Load page
                 self.log('Loading page...')
-                await page.goto(self.game_url, wait_until='networkidle', timeout=45000)
-                await page.wait_for_timeout(3000)
+                # mlb.com keeps long-poll/websocket connections open continuously,
+                # so wait_until='networkidle' never resolves and goto times out.
+                # Use 'domcontentloaded' and rely on FIND_POSER_JS polling below
+                # for readiness. (Fix 2026-05-06.)
+                await page.goto(self.game_url, wait_until='domcontentloaded', timeout=60000)
+                await page.wait_for_timeout(5000)
 
-                # Click 3D button
-                try:
-                    btn = page.locator('a:has-text("3D"), button:has-text("3D")')
-                    if await btn.count() > 0:
-                        self.log('Clicking 3D button...')
-                        await btn.first.click()
-                        await page.wait_for_timeout(5000)
-                except Exception as e:
-                    self.log(f'3D button click failed (may not be needed): {e}')
+                # Accept cookies banner if present — it overlays the bottom of the
+                # page and intercepts clicks on UI behind it. Try several common
+                # button labels. (Fix 2026-05-06.)
+                cookie_labels = ['Accept', 'Accept All', 'Accept all', 'I Accept',
+                                 'OK', 'Got it', 'Agree', 'I agree']
+                for lbl in cookie_labels:
+                    try:
+                        cb = page.locator(f'button:has-text("{lbl}")')
+                        if await cb.count() > 0:
+                            await cb.first.click(timeout=3000)
+                            self.log(f'Accepted cookies banner ({lbl!r})')
+                            await page.wait_for_timeout(2000)
+                            break
+                    except Exception:
+                        continue
+
+                # The 3D toggle isn't always rendered immediately on hydrate.
+                # Poll for it with multiple selector strategies for up to 30s.
+                self.log('Looking for 3D toggle...')
+                three_d_selectors = [
+                    'button[aria-label*="3D"]',
+                    'a[aria-label*="3D"]',
+                    'button:has-text("3D")',
+                    'a:has-text("3D")',
+                    '[data-testid*="3d"]',
+                    '[data-testid*="3D"]',
+                    '[class*="threeDee"]',
+                    '[class*="ThreeDee"]',
+                ]
+                clicked_3d = False
+                for attempt in range(15):  # up to ~30s
+                    for sel in three_d_selectors:
+                        try:
+                            btn = page.locator(sel)
+                            if await btn.count() > 0:
+                                # Scroll into view first; the button may be off-screen
+                                await btn.first.scroll_into_view_if_needed(timeout=2000)
+                                await btn.first.click(timeout=3000)
+                                self.log(f'Clicked 3D toggle via selector {sel!r}')
+                                clicked_3d = True
+                                await page.wait_for_timeout(5000)
+                                break
+                        except Exception:
+                            continue
+                    if clicked_3d:
+                        break
+                    await page.wait_for_timeout(2000)
+
+                if not clicked_3d:
+                    # Save evidence so we can iterate if the toggle has been
+                    # renamed/relocated by mlb.com.
+                    try:
+                        ss = self.session_dir / 'no_3d_button.png'
+                        await page.screenshot(path=str(ss))
+                        self.log(f'No 3D toggle found. Screenshot: {ss}')
+                        button_dump = await page.evaluate(
+                            """() => Array.from(document.querySelectorAll('a, button'))
+                                .map(b => ({
+                                    tag: b.tagName,
+                                    text: (b.textContent || '').trim().slice(0, 40),
+                                    aria: b.getAttribute('aria-label'),
+                                    cls: (b.className?.toString?.() || '').slice(0, 60),
+                                }))
+                                .filter(b => b.text || b.aria)
+                                .slice(0, 80)"""
+                        )
+                        (self.session_dir / 'buttons_dump.json').write_text(
+                            json.dumps(button_dump, indent=2))
+                        self.log(f'Dumped {len(button_dump)} buttons to buttons_dump.json')
+                    except Exception as e:
+                        self.log(f'Diagnostic dump failed: {e}')
 
                 # Wait for FieldVision
                 self.log('Waiting for FieldVision 3D to load...')
@@ -356,7 +427,7 @@ class GameCapture:
                                 state = await page.evaluate(FIND_POSER_JS)
                                 if not state.get('ready'):
                                     self.log(f'FieldVision not ready: {state}. Reloading page.')
-                                    await page.reload(wait_until='networkidle', timeout=30000)
+                                    await page.reload(wait_until='domcontentloaded', timeout=60000)
                                     await page.wait_for_timeout(5000)
                                     # Re-click 3D
                                     try:
