@@ -1,0 +1,13 @@
+# Live capture dependencies
+playwright==1.48.0
+
+# Storage: SQLite ships with Python; DuckDB is the analysis layer
+duckdb==1.1.3
+
+# HTTP for play-by-play / schedule (uses stdlib urllib for now;
+# requests is here for future cleaner client code)
+requests==2.32.3
+
+# Dev / test
+pytest==8.3.3
+pytest-asyncio==0.24.0

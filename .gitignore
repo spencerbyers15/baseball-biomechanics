@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# venv
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Project — captured data is large and recreatable
+captures/
+fv_captures/
+state/
+*.jsonl
+*.bin
+
+# Project — local databases (per-game capture DBs and registry)
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.duckdb
+*.duckdb.wal
+
+# Diagnostic outputs (raw inspection dumps; reports under docs/ are tracked)
+diagnostics/raw/
+
+# Logs
+*.log
+scheduler.log
