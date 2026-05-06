@@ -53,4 +53,8 @@ samples/binary_capture_*/
 # HLS video samples (large + ToS-sensitive, not part of the joint-data path)
 samples/dfv_*.mp4
 samples/dfv_*.png
+
+# Rendered visualizations of decoded data (derivative of ToS-sensitive source)
+samples/decoded_*.mp4
+samples/decoded_*.png
 .claude/settings.local.json
