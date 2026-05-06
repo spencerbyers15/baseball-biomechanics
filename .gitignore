@@ -43,3 +43,14 @@ diagnostics/raw/
 # Logs
 *.log
 scheduler.log
+
+# Persistent Playwright profile holding logged-in MLB session cookies — never commit
+.mlb_profile/
+
+# Captures of binary mannequin segments (potentially large + ToS-sensitive)
+samples/binary_capture_*/
+
+# HLS video samples (large + ToS-sensitive, not part of the joint-data path)
+samples/dfv_*.mp4
+samples/dfv_*.png
+.claude/settings.local.json
