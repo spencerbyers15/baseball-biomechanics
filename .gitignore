@@ -43,6 +43,10 @@ diagnostics/raw/
 # Logs
 *.log
 scheduler.log
+scheduler.err
+
+# Daemon state (per-game last-segment markers, not interesting to commit)
+state/
 
 # Persistent Playwright profile holding logged-in MLB session cookies — never commit
 .mlb_profile/
