@@ -104,6 +104,8 @@ def main():
     parser.add_argument("--start-segment", type=int, default=1582)
     parser.add_argument("--duration", type=int, default=30, help="Seconds")
     parser.add_argument("--out", default=None)
+    parser.add_argument("--focus-uid", type=int, default=None,
+                        help="Override the auto-picked focus actor (default: most-common in window)")
     args = parser.parse_args()
 
     n_segments = args.duration // 5  # 5 sec per segment
@@ -113,10 +115,16 @@ def main():
     if not frames:
         raise SystemExit("No frames found in the requested range")
 
-    # Pick focus actor: most common across the clip
+    # Pick focus actor: explicit arg, or most common across the clip
     from collections import Counter
     actor_counts = Counter(a["uid"] for f in frames for a in f["actors"])
-    focus_uid, focus_count = actor_counts.most_common(1)[0]
+    if args.focus_uid is not None:
+        focus_uid = args.focus_uid
+        focus_count = actor_counts.get(focus_uid, 0)
+        if focus_count == 0:
+            raise SystemExit(f"focus uid {focus_uid} not in this segment range")
+    else:
+        focus_uid, focus_count = actor_counts.most_common(1)[0]
     info_actor = None
     for f in frames:
         for a in f["actors"]:
@@ -261,10 +269,16 @@ def main():
                 bx, by, bz = a["bat"]
                 hx, hy, hz = wp[28]
                 dx, dy, dz = bx - hx, by - hy, bz - hz
-                norm = (dx*dx + dy*dy + dz*dz) ** 0.5 or 1
-                ext = 2.5
-                tx, ty, tz = bx + dx/norm*ext, by + dy/norm*ext, bz + dz/norm*ext
-                bat_3d[ai].set_data_3d([hx, bx, tx], [hz, bz, tz], [hy, by, ty])
+                dist = (dx*dx + dy*dy + dz*dz) ** 0.5
+                # Only render the bat when it's actually being held (within
+                # arm's reach of the right hand). batRootPos tracks the bat
+                # as an independent object — when it's been tossed or sits
+                # on-deck, it can be 100+ ft from the player.
+                if dist < 3.0:
+                    norm = dist or 1
+                    ext = 2.5
+                    tx, ty, tz = bx + dx/norm*ext, by + dy/norm*ext, bz + dz/norm*ext
+                    bat_3d[ai].set_data_3d([hx, bx, tx], [hz, bz, tz], [hy, by, ty])
 
         if focus is not None and 21 in focus["world_pos"]:
             h = focus["world_pos"][21]
