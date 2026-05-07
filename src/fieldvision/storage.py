@@ -1,7 +1,7 @@
 """SQLite-per-game storage for decoded FieldVision skeletal data.
 
 Layout:
-  ~/Documents/GitHub/fieldvision/data/
+  ~/fieldvision/data/
     games_registry.sqlite           # one row per captured game
     fv_<gamePk>.sqlite              # everything for that game
 

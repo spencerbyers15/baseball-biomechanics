@@ -5,7 +5,7 @@ Usage (run once):
   python scripts/setup_login.py
 
 Flow:
-  1. Opens a headed Chromium with user_data_dir=~/Documents/GitHub/fieldvision/.mlb_profile/
+  1. Opens a headed Chromium with user_data_dir=~/fieldvision/.mlb_profile/
   2. Forces the window to the foreground via AppleScript (works around the
      macOS focus issue we hit earlier).
   3. Navigates to mlb.com/login.

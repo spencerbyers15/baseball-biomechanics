@@ -8,11 +8,12 @@
     <key>ProgramArguments</key>
     <array>
         <string>/Users/spencerbyers/anaconda3/envs/baseball/bin/python</string>
-        <string>/Users/spencerbyers/Documents/GitHub/fieldvision/scripts/fv_daemon.py</string>
+        <string>-u</string>
+        <string>/Users/spencerbyers/fieldvision/scripts/fv_daemon.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/spencerbyers/Documents/GitHub/fieldvision</string>
+    <string>/Users/spencerbyers/fieldvision</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -24,15 +25,19 @@
     <integer>30</integer>
 
     <key>StandardOutPath</key>
-    <string>/Users/spencerbyers/Documents/GitHub/fieldvision/scheduler.log</string>
+    <string>/Users/spencerbyers/fieldvision/scheduler.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/spencerbyers/Documents/GitHub/fieldvision/scheduler.err</string>
+    <string>/Users/spencerbyers/fieldvision/scheduler.err</string>
 
     <key>EnvironmentVariables</key>
     <dict>
+        <key>HOME</key>
+        <string>/Users/spencerbyers</string>
+        <key>USER</key>
+        <string>spencerbyers</string>
         <key>PATH</key>
-        <string>/Users/spencerbyers/anaconda3/envs/baseball/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>/Users/spencerbyers/anaconda3/envs/baseball/bin:/Users/spencerbyers/anaconda3/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
 </dict>
 </plist>

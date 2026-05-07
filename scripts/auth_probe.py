@@ -3,7 +3,7 @@ that the legacy fieldvision-hls.mlbinfra.com binary endpoint accepts.
 
 Flow (with --headed, the default for this script):
   1. Open a Playwright Chromium with a persistent profile dir at
-     ~/Documents/GitHub/fieldvision/.mlb_profile so the login survives
+     ~/fieldvision/.mlb_profile so the login survives
      across runs.
   2. Navigate to https://www.mlb.com/login.
   3. Wait up to LOGIN_TIMEOUT seconds for the user to log in and for
