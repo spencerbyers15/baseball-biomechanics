@@ -42,12 +42,11 @@ JOINT_LABEL_3D = {0: "Pelv", 21: "Head", 4: "R.Foot", 12: "L.Foot",
 
 
 def load_clip(db_path: Path, start_seg: int, n_segments: int):
-    """Pull all actor-frame rows in the segment range. Returns frames list."""
+    """Pull all actor-frame rows + bat_frame rows in the segment range."""
     conn = sqlite3.connect(str(db_path))
     cur = conn.cursor()
     end_seg = start_seg + n_segments
 
-    # Build the column list dynamically
     joint_cols = []
     for bid, name in JOINT_COLS:
         joint_cols += [f"{name}_x", f"{name}_y", f"{name}_z"]
@@ -64,10 +63,25 @@ def load_clip(db_path: Path, start_seg: int, n_segments: int):
     )
     cur.execute(sql, (start_seg, end_seg))
     rows = cur.fetchall()
-    conn.close()
     print(f"  Loaded {len(rows):,} actor-frame rows from segments {start_seg}..{end_seg - 1}")
 
-    # Group by (segment, frame_num) → list of actor dicts
+    # Per-frame bat orientation (handle + head positions) from inferredBat
+    cur.execute(
+        "SELECT segment_idx, frame_num, head_x, head_y, head_z, "
+        "handle_x, handle_y, handle_z FROM bat_frame "
+        "WHERE segment_idx >= ? AND segment_idx < ?",
+        (start_seg, end_seg),
+    )
+    bat_by_frame = {}
+    for r in cur.fetchall():
+        seg, fn = r[0], r[1]
+        bat_by_frame[(seg, fn)] = {
+            "head": (r[2], r[3], r[4]),
+            "handle": (r[5], r[6], r[7]),
+        }
+    print(f"  Loaded {len(bat_by_frame):,} bat orientations")
+    conn.close()
+
     frames_dict = defaultdict(list)
     for r in rows:
         seg, fn, uid, mlb_id, atype, time_unix, ts, scale = r[:8]
@@ -87,12 +101,12 @@ def load_clip(db_path: Path, start_seg: int, n_segments: int):
             "world_pos": wp, "bat": bat,
         })
 
-    # Convert to ordered list
     sorted_keys = sorted(frames_dict.keys())
     frames = [{
         "key": k,
         "ts": frames_dict[k][0]["ts"] if frames_dict[k] else None,
         "actors": frames_dict[k],
+        "bat_axis": bat_by_frame.get(k),  # {"head": (x,y,z), "handle": (x,y,z)} or None
     } for k in sorted_keys]
     return frames
 
@@ -152,13 +166,18 @@ def main():
                 for _ in range(max_actors)]
     joints_3d = [ax3d.scatter([], [], [], s=18, c="cyan", depthshade=False)
                  for _ in range(max_actors)]
-    bat_3d = [ax3d.plot([], [], [], "-", lw=4, color="#d4a04c")[0] for _ in range(max_actors)]
+    # Single bat — inferredBat is per-frame, not per-actor
+    bat_3d_line = ax3d.plot([], [], [], "-", lw=5, color="#d4a04c",
+                            solid_capstyle="round")[0]
+    bat_3d_head = ax3d.scatter([], [], [], s=50, c="#d4a04c",
+                               depthshade=False, marker="o")
     head_marker_3d = ax3d.scatter([], [], [], s=80, c="red", depthshade=False, marker="o")
 
     bones_front = [[ax_front.plot([], [], "-", lw=2, color="white",
                                   solid_capstyle="round")[0] for _ in SKELETON_CONNECTIONS]]
     joints_front = ax_front.scatter([], [], s=14, c="cyan")
-    bat_front = ax_front.plot([], [], "-", lw=3, color="#d4a04c")[0]
+    bat_front = ax_front.plot([], [], "-", lw=4, color="#d4a04c",
+                              solid_capstyle="round")[0]
     labels_front = {bid: ax_front.text(0, 0, "", color="yellow", fontsize=6,
                                        ha="left", va="center", visible=False,
                                        bbox=dict(boxstyle="round,pad=0.1",
@@ -172,7 +191,8 @@ def main():
     bones_side = [[ax_side.plot([], [], "-", lw=2, color="white",
                                 solid_capstyle="round")[0] for _ in SKELETON_CONNECTIONS]]
     joints_side = ax_side.scatter([], [], s=14, c="cyan")
-    bat_side = ax_side.plot([], [], "-", lw=3, color="#d4a04c")[0]
+    bat_side = ax_side.plot([], [], "-", lw=4, color="#d4a04c",
+                            solid_capstyle="round")[0]
     labels_side = {bid: ax_side.text(0, 0, "", color="yellow", fontsize=6,
                                      ha="left", va="center", visible=False,
                                      bbox=dict(boxstyle="round,pad=0.1",
@@ -208,7 +228,7 @@ def main():
         ax_pane.set_pane_color((0.2, 0.2, 0.2, 1))
     ax3d.view_init(elev=15, azim=-50)
 
-    def draw_2d(ax, ix, iy, focus_actor, lines, joints_scat, bat_line, labels_dict):
+    def draw_2d(ax, ix, iy, focus_actor, bat_axis, lines, joints_scat, bat_line, labels_dict):
         for ln in lines[0]: ln.set_data([], [])
         joints_scat.set_offsets(np.empty((0, 2)))
         bat_line.set_data([], [])
@@ -226,7 +246,21 @@ def main():
                 labels_dict[bid].set_position((p[ix] + 0.15, p[iy]))
                 labels_dict[bid].set_text(JOINT_LABEL[bid])
                 labels_dict[bid].set_visible(True)
-        # Center on first present joint (pelvis preferred)
+        # Bat axis (handle → head) if it's near the focus actor
+        if bat_axis is not None:
+            handle = bat_axis["handle"]
+            head = bat_axis["head"]
+            # Only draw if it's close enough to the focus actor to make sense
+            cx_check = focus_actor["rootPos"] if "rootPos" in focus_actor else wp.get(0)
+            if cx_check is not None:
+                d = ((handle[0]-cx_check[0])**2 + (handle[1]-cx_check[1])**2
+                     + (handle[2]-cx_check[2])**2) ** 0.5
+                if d < 6.0:  # within 6 ft of focus actor's pelvis
+                    bat_line.set_data(
+                        [handle[ix], head[ix]],
+                        [handle[iy], head[iy]],
+                    )
+        # Center on pelvis
         center = wp.get(0) or next(iter(wp.values()))
         ax.set_xlim(center[ix] - 5, center[ix] + 5)
         ax.set_ylim(center[iy] - 5, center[iy] + 5)
@@ -248,13 +282,17 @@ def main():
         for actor_lines in bones_3d:
             for ln in actor_lines: ln.set_data_3d([], [], [])
         for s in joints_3d: s._offsets3d = ([], [], [])
-        for ln in bat_3d: ln.set_data_3d([], [], [])
+        bat_3d_line.set_data_3d([], [], [])
+        bat_3d_head._offsets3d = ([], [], [])
         head_marker_3d._offsets3d = ([], [], [])
 
         for ai, a in enumerate(fr["actors"]):
             if ai >= max_actors: break
             color = color_map.get(a["uid"], "white")
             wp = a["world_pos"]
+            # Stash pelvis on actor dict so 2D draw can reference it
+            if 0 in wp:
+                a["rootPos"] = wp[0]
             for bi, (a_id, b_id) in enumerate(SKELETON_CONNECTIONS):
                 if a_id in wp and b_id in wp:
                     p1, p2 = wp[a_id], wp[b_id]
@@ -265,20 +303,18 @@ def main():
             joint_zs = [p[1] for p in wp.values()]
             joints_3d[ai]._offsets3d = (joint_xs, joint_ys, joint_zs)
             joints_3d[ai].set_color(color)
-            if a["bat"] and 28 in wp:
-                bx, by, bz = a["bat"]
-                hx, hy, hz = wp[28]
-                dx, dy, dz = bx - hx, by - hy, bz - hz
-                dist = (dx*dx + dy*dy + dz*dz) ** 0.5
-                # Only render the bat when it's actually being held (within
-                # arm's reach of the right hand). batRootPos tracks the bat
-                # as an independent object — when it's been tossed or sits
-                # on-deck, it can be 100+ ft from the player.
-                if dist < 3.0:
-                    norm = dist or 1
-                    ext = 2.5
-                    tx, ty, tz = bx + dx/norm*ext, by + dy/norm*ext, bz + dz/norm*ext
-                    bat_3d[ai].set_data_3d([hx, bx, tx], [hz, bz, tz], [hy, by, ty])
+
+        # Single bat from inferredBat — the real handle→head axis
+        bat_axis = fr.get("bat_axis")
+        if bat_axis is not None:
+            handle = bat_axis["handle"]
+            head = bat_axis["head"]
+            bat_3d_line.set_data_3d(
+                [handle[0], head[0]],
+                [handle[2], head[2]],
+                [handle[1], head[1]],
+            )
+            bat_3d_head._offsets3d = ([head[0]], [head[2]], [head[1]])
 
         if focus is not None and 21 in focus["world_pos"]:
             h = focus["world_pos"][21]
@@ -293,8 +329,8 @@ def main():
             else:
                 txt.set_visible(False)
 
-        draw_2d(ax_front, 0, 1, focus, bones_front, joints_front, bat_front, labels_front)
-        draw_2d(ax_side,  2, 1, focus, bones_side,  joints_side,  bat_side,  labels_side)
+        draw_2d(ax_front, 0, 1, focus, bat_axis, bones_front, joints_front, bat_front, labels_front)
+        draw_2d(ax_side,  2, 1, focus, bat_axis, bones_side,  joints_side,  bat_side,  labels_side)
 
         for d in actor_dots.values(): d.set_data([], [])
         for a in fr["actors"]:

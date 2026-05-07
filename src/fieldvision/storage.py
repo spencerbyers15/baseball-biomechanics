@@ -112,6 +112,18 @@ CREATE TABLE IF NOT EXISTS ball_frame (
     PRIMARY KEY (game_pk, segment_idx, frame_num)
 );
 
+-- Per-frame bat orientation from inferredBat (TrackingBatPositionWire).
+-- Bat axis = (head - handle); length is consistently ~34 in (standard MLB).
+CREATE TABLE IF NOT EXISTS bat_frame (
+    game_pk INTEGER NOT NULL,
+    segment_idx INTEGER NOT NULL,
+    frame_num INTEGER NOT NULL,
+    time_unix REAL NOT NULL,
+    head_x REAL, head_y REAL, head_z REAL,
+    handle_x REAL, handle_y REAL, handle_z REAL,
+    PRIMARY KEY (game_pk, segment_idx, frame_num)
+);
+
 CREATE TABLE IF NOT EXISTS game_event (
     game_pk INTEGER NOT NULL,
     segment_idx INTEGER,
@@ -297,11 +309,12 @@ def ingest_segment(
     labels_dict: dict[int, dict],
     insert_sql: str,
 ) -> tuple[int, int]:
-    """Decode one .bin segment and insert all actor-frames + ball-frames.
+    """Decode one .bin segment and insert all actor-frames + ball-frames + bat-frames.
     Returns (n_actor_rows_inserted, n_ball_rows_inserted)."""
     td = read_tracking_data(bin_path.read_bytes())
     actor_rows: list[tuple] = []
     ball_rows: list[tuple] = []
+    bat_rows: list[tuple] = []
 
     for f in td.frames:
         # Per-frame metadata
@@ -314,6 +327,17 @@ def ingest_segment(
             ball_rows.append((
                 game_pk, segment_idx, f.num, time_unix,
                 f.ballPosition.x, f.ballPosition.y, f.ballPosition.z,
+            ))
+
+        # Bat orientation from inferredBat
+        if f.inferredBat is not None and f.inferredBat.headPosition is not None \
+                and f.inferredBat.handlePosition is not None:
+            head = f.inferredBat.headPosition
+            handle = f.inferredBat.handlePosition
+            bat_rows.append((
+                game_pk, segment_idx, f.num, time_unix,
+                head.x, head.y, head.z,
+                handle.x, handle.y, handle.z,
             ))
 
         # Actor poses
@@ -346,6 +370,14 @@ def ingest_segment(
             "(game_pk, segment_idx, frame_num, time_unix, ball_x, ball_y, ball_z) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             ball_rows,
+        )
+    if bat_rows:
+        conn.executemany(
+            "INSERT OR REPLACE INTO bat_frame "
+            "(game_pk, segment_idx, frame_num, time_unix, "
+            "head_x, head_y, head_z, handle_x, handle_y, handle_z) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            bat_rows,
         )
     return len(actor_rows), len(ball_rows)
 

@@ -166,6 +166,28 @@ def read_skeletal_player(bb: ByteBuffer, pos: int) -> SkeletalPlayer:
 
 
 # ────────────────────────────────────────────────────────────
+# TrackingBatPositionWire — bat orientation per frame
+# Vtable layout (from JS bundle, getRootAsTrackingBatPositionWire):
+#   field 0 (offset 4): headPosition   Vec3 inline (bat barrel/tip world pos)
+#   field 1 (offset 6): handlePosition Vec3 inline (bat grip world pos)
+# ────────────────────────────────────────────────────────────
+
+
+@dataclass
+class InferredBat:
+    headPosition: Optional[Vec3]
+    handlePosition: Optional[Vec3]
+
+
+def read_inferred_bat(bb: ByteBuffer, pos: int) -> InferredBat:
+    o_head = bb.field_offset(pos, 4)
+    o_handle = bb.field_offset(pos, 6)
+    head = read_vec3(bb, pos + o_head) if o_head else None
+    handle = read_vec3(bb, pos + o_handle) if o_handle else None
+    return InferredBat(headPosition=head, handlePosition=handle)
+
+
+# ────────────────────────────────────────────────────────────
 # TrackingFrameWire — one frame
 # Vtable (from JS bundle's static add* methods):
 #   field 0  (offset  4): actorPoses   [ActorPose]
@@ -193,11 +215,13 @@ class TrackingFrame:
     ballPosition: Optional[Vec3]
     actorPoses: list[ActorPose] = field(default_factory=list)
     rawJoints: list[SkeletalPlayer] = field(default_factory=list)
+    inferredBat: Optional[InferredBat] = None
 
 
 def read_tracking_frame(bb: ByteBuffer, pos: int) -> TrackingFrame:
     o_actors = bb.field_offset(pos, 4)
     o_ball = bb.field_offset(pos, 6)
+    o_inferred = bb.field_offset(pos, 12)  # inferredBat (TrackingBatPositionWire)
     o_raw = bb.field_offset(pos, 16)  # rawJoints (SkeletalPlayerWire vector)
     o_num = bb.field_offset(pos, 18)
     o_time = bb.field_offset(pos, 20)
@@ -228,7 +252,13 @@ def read_tracking_frame(bb: ByteBuffer, pos: int) -> TrackingFrame:
             elem_pos = bb.indirect(v + 4 * i)
             raw.append(read_skeletal_player(bb, elem_pos))
 
-    return TrackingFrame(num, time_v, timestamp, isGap, gap_dur, ballPos, actors, raw)
+    inferred = None
+    if o_inferred:
+        # inferredBat is referenced via __indirect (offset to a separate table)
+        inferred = read_inferred_bat(bb, bb.indirect(pos + o_inferred))
+
+    return TrackingFrame(num, time_v, timestamp, isGap, gap_dur, ballPos,
+                         actors, raw, inferred)
 
 
 # ────────────────────────────────────────────────────────────
