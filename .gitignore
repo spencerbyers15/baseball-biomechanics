@@ -51,6 +51,9 @@ scheduler.log
 .fv_token.txt
 .fv_token*
 
+# SQLite + DuckDB stores (multi-GB, derivative of ToS-sensitive source)
+data/
+
 # Captures of binary mannequin segments (potentially large + ToS-sensitive)
 samples/binary_capture_*/
 
