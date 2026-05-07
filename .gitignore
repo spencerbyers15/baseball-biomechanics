@@ -47,6 +47,10 @@ scheduler.log
 # Persistent Playwright profile holding logged-in MLB session cookies — never commit
 .mlb_profile/
 
+# Bearer token files — never commit
+.fv_token.txt
+.fv_token*
+
 # Captures of binary mannequin segments (potentially large + ToS-sensitive)
 samples/binary_capture_*/
 

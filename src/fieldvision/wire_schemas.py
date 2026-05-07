@@ -98,6 +98,74 @@ def read_actor_pose(bb: ByteBuffer, pos: int) -> ActorPose:
 
 
 # ────────────────────────────────────────────────────────────
+# SkeletalPlayerWire — raw Hawk-Eye joint positions for one player
+# Vtable layout (from JS bundle, getRootAsSkeletalPlayerWire):
+#   field 0 (offset  4): positionId    uint16
+#   field 1 (offset  6): trackId       uint32
+#   field 2 (offset  8): jointPositions [float32]  (3 floats per joint = x,y,z)
+#   field 3 (offset 10): jointIds       [uint32]   (one per joint)
+#   field 4 (offset 12): playerId       uint32     (MLB player ID — direct, no labels.json join)
+#   field 5 (offset 14): jerseyNumber   uint32
+#   field 6 (offset 16): roleId         uint32
+# ────────────────────────────────────────────────────────────
+
+
+@dataclass
+class SkeletalPlayer:
+    positionId: int
+    trackId: int
+    playerId: int
+    jerseyNumber: int
+    roleId: int
+    jointIds: list[int]
+    # joint world positions: list of (x, y, z) tuples in stadium feet, Y up
+    jointPositions: list[tuple[float, float, float]]
+
+
+def read_skeletal_player(bb: ByteBuffer, pos: int) -> SkeletalPlayer:
+    o_pos_id = bb.field_offset(pos, 4)
+    o_track = bb.field_offset(pos, 6)
+    o_jpos = bb.field_offset(pos, 8)
+    o_jids = bb.field_offset(pos, 10)
+    o_player = bb.field_offset(pos, 12)
+    o_jersey = bb.field_offset(pos, 14)
+    o_role = bb.field_offset(pos, 16)
+
+    positionId = bb.read_uint16(pos + o_pos_id) if o_pos_id else 0
+    trackId = bb.read_uint32(pos + o_track) if o_track else 0
+    playerId = bb.read_uint32(pos + o_player) if o_player else 0
+    jerseyNumber = bb.read_uint32(pos + o_jersey) if o_jersey else 0
+    roleId = bb.read_uint32(pos + o_role) if o_role else 0
+
+    joint_ids: list[int] = []
+    if o_jids:
+        v = bb.vector_data(pos + o_jids)
+        n = bb.vector_len(pos + o_jids)
+        joint_ids = [bb.read_uint32(v + 4 * i) for i in range(n)]
+
+    joint_positions: list[tuple[float, float, float]] = []
+    if o_jpos:
+        v = bb.vector_data(pos + o_jpos)
+        n_floats = bb.vector_len(pos + o_jpos)
+        # n_floats should be 3 * len(joint_ids)
+        for i in range(n_floats // 3):
+            x = bb.read_float32(v + 4 * (3 * i + 0))
+            y = bb.read_float32(v + 4 * (3 * i + 1))
+            z = bb.read_float32(v + 4 * (3 * i + 2))
+            joint_positions.append((x, y, z))
+
+    return SkeletalPlayer(
+        positionId=positionId,
+        trackId=trackId,
+        playerId=playerId,
+        jerseyNumber=jerseyNumber,
+        roleId=roleId,
+        jointIds=joint_ids,
+        jointPositions=joint_positions,
+    )
+
+
+# ────────────────────────────────────────────────────────────
 # TrackingFrameWire — one frame
 # Vtable (from JS bundle's static add* methods):
 #   field 0  (offset  4): actorPoses   [ActorPose]
@@ -124,11 +192,13 @@ class TrackingFrame:
     gapDuration: float
     ballPosition: Optional[Vec3]
     actorPoses: list[ActorPose] = field(default_factory=list)
+    rawJoints: list[SkeletalPlayer] = field(default_factory=list)
 
 
 def read_tracking_frame(bb: ByteBuffer, pos: int) -> TrackingFrame:
     o_actors = bb.field_offset(pos, 4)
     o_ball = bb.field_offset(pos, 6)
+    o_raw = bb.field_offset(pos, 16)  # rawJoints (SkeletalPlayerWire vector)
     o_num = bb.field_offset(pos, 18)
     o_time = bb.field_offset(pos, 20)
     o_ts = bb.field_offset(pos, 22)
@@ -150,7 +220,15 @@ def read_tracking_frame(bb: ByteBuffer, pos: int) -> TrackingFrame:
             elem_pos = bb.indirect(v + 4 * i)
             actors.append(read_actor_pose(bb, elem_pos))
 
-    return TrackingFrame(num, time_v, timestamp, isGap, gap_dur, ballPos, actors)
+    raw: list[SkeletalPlayer] = []
+    if o_raw:
+        v = bb.vector_data(pos + o_raw)
+        n = bb.vector_len(pos + o_raw)
+        for i in range(n):
+            elem_pos = bb.indirect(v + 4 * i)
+            raw.append(read_skeletal_player(bb, elem_pos))
+
+    return TrackingFrame(num, time_v, timestamp, isGap, gap_dur, ballPos, actors, raw)
 
 
 # ────────────────────────────────────────────────────────────
@@ -199,37 +277,40 @@ def read_tracking_data(data: bytes) -> TrackingData:
 
 def unpack_smallest_three(packed: int) -> tuple[float, float, float, float]:
     """
-    Decode a 32-bit packed unit quaternion using the standard smallest-three scheme:
-    bits 30-31: index of the largest-magnitude component (the one omitted)
-    bits 20-29: 10-bit signed component a (mapped to [-1/sqrt(2), +1/sqrt(2)])
-    bits 10-19: 10-bit signed component b
-    bits  0- 9: 10-bit signed component c
+    Decode a 32-bit packed unit quaternion. EXACT reproduction of the
+    JS encoder in gd.@bvg_poser.min.js (zP.unpack):
 
-    Bit ordering above is a guess — may need bit-flip/mirror after validation.
-    Returns (qx, qy, qz, qw) with the dropped component reconstructed.
+      bits 0-1 : omitted-axis index i (0=x, 1=y, 2=z, 3=w)
+      bits 2-11: component at slot (i+3)%4   (10-bit signed)
+      bits 12-21: component at slot (i+2)%4   (10-bit signed)
+      bits 22-31: component at slot (i+1)%4   (10-bit signed)
+
+    10-bit decoding (sign-magnitude with sign bit at position 9):
+      if msb set: value -= 512 from the masked-off form
+      result = (raw / 511) * maxValue
+
+    maxValue = 0.7072 (≈ 1/sqrt(2)). Reconstructed component[i] = sqrt(1 - sum²).
+
+    Returns (qx, qy, qz, qw).
     """
-    INV_SQRT2 = 0.7071067811865476
-    drop = (packed >> 30) & 0x3
-    a_raw = (packed >> 20) & 0x3FF
-    b_raw = (packed >> 10) & 0x3FF
-    c_raw = packed & 0x3FF
-
-    def _decode_signed_10(v: int) -> float:
-        # Map 10-bit unsigned [0..1023] to signed range [-1/sqrt(2), +1/sqrt(2)]
-        return ((v / 1023.0) * 2.0 - 1.0) * INV_SQRT2
-
-    a = _decode_signed_10(a_raw)
-    b = _decode_signed_10(b_raw)
-    c = _decode_signed_10(c_raw)
-
-    # Reconstruct dropped axis: q_largest = sqrt(1 - a^2 - b^2 - c^2)
-    largest = max(0.0, 1.0 - a * a - b * b - c * c) ** 0.5
-
+    MAX_VALUE = 0.7072
+    i = packed & 0x3
+    shifts = (22, 12, 2)
     components = [0.0, 0.0, 0.0, 0.0]
-    components[drop] = largest
-    other_indices = [i for i in range(4) if i != drop]
-    components[other_indices[0]] = a
-    components[other_indices[1]] = b
-    components[other_indices[2]] = c
-
+    sum_sq = 0.0
+    for s in range(3):
+        raw = (packed >> shifts[s]) & 0x3FF
+        # 10-bit sign-magnitude per the JS dequantizeFloat
+        if raw & 0x200:  # 512 (sign bit at position 9)
+            raw ^= 0x200
+            raw -= 512
+        # raw is now in [-512, +511]
+        val = (raw / 511.0) * MAX_VALUE
+        components[(i + s + 1) % 4] = val
+        sum_sq += val * val
+    # Reconstruct the omitted (largest-magnitude) component
+    components[i] = max(0.0, 1.0 - sum_sq) ** 0.5
+    # Canonicalize sign so w >= 0 (matches the JS jB.negate behavior)
+    if components[3] < 0:
+        components = [-c for c in components]
     return tuple(components)  # (x, y, z, w)
