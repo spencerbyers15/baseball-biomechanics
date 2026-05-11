@@ -154,6 +154,40 @@ def quat_to_rot_matrix(q):
     )
 
 
+def rot_matrix_to_quat(R):
+    """Convert a 3x3 rotation matrix to a (x,y,z,w) quaternion (Shepperd's
+    method). Numerically stable for all rotations."""
+    m00, m01, m02 = R[0, 0], R[0, 1], R[0, 2]
+    m10, m11, m12 = R[1, 0], R[1, 1], R[1, 2]
+    m20, m21, m22 = R[2, 0], R[2, 1], R[2, 2]
+    tr = m00 + m11 + m22
+    if tr > 0:
+        s = 0.5 / np.sqrt(tr + 1.0)
+        w = 0.25 / s
+        x = (m21 - m12) * s
+        y = (m02 - m20) * s
+        z = (m10 - m01) * s
+    elif (m00 > m11) and (m00 > m22):
+        s = 2.0 * np.sqrt(1.0 + m00 - m11 - m22)
+        w = (m21 - m12) / s
+        x = 0.25 * s
+        y = (m01 + m10) / s
+        z = (m02 + m20) / s
+    elif m11 > m22:
+        s = 2.0 * np.sqrt(1.0 + m11 - m00 - m22)
+        w = (m02 - m20) / s
+        x = (m01 + m10) / s
+        y = 0.25 * s
+        z = (m12 + m21) / s
+    else:
+        s = 2.0 * np.sqrt(1.0 + m22 - m00 - m11)
+        w = (m10 - m01) / s
+        x = (m02 + m20) / s
+        y = (m12 + m21) / s
+        z = 0.25 * s
+    return (float(x), float(y), float(z), float(w))
+
+
 def quat_multiply(a, b):
     """Quaternion multiplication, (x,y,z,w) convention. result = a * b."""
     ax, ay, az, aw = a
@@ -174,6 +208,10 @@ def quat_multiply(a, b):
 @dataclass
 class WorldSkeleton:
     bone_world_pos: dict[int, np.ndarray]
+    # World-frame rotation per bone as (x, y, z, w) quaternion. This is the
+    # composed orientation in stadium coordinates — useful for gaze direction
+    # (head), body-facing (torso), etc. Populated by forward_kinematics.
+    bone_world_rot: dict[int, tuple[float, float, float, float]] | None = None
 
 
 def forward_kinematics(
@@ -228,4 +266,5 @@ def forward_kinematics(
             world_pos[b] = world_pos[parent] + world_R[parent] @ local_offset
             world_R[b] = world_R[parent] @ local_R
 
-    return WorldSkeleton(bone_world_pos=world_pos)
+    bone_world_rot = {b: rot_matrix_to_quat(R) for b, R in world_R.items()}
+    return WorldSkeleton(bone_world_pos=world_pos, bone_world_rot=bone_world_rot)

@@ -46,9 +46,16 @@ JOINT_COLS = [
 def _xyz_columns_ddl() -> str:
     parts = []
     for _, name in JOINT_COLS:
+        # World position (xyz) + world-frame orientation quaternion (xyzw).
+        # Quaternion is the composed world rotation from forward kinematics —
+        # useful for gaze direction (head bone), body-facing (torso), etc.
         parts.append(f"{name}_x REAL")
         parts.append(f"{name}_y REAL")
         parts.append(f"{name}_z REAL")
+        parts.append(f"{name}_qx REAL")
+        parts.append(f"{name}_qy REAL")
+        parts.append(f"{name}_qz REAL")
+        parts.append(f"{name}_qw REAL")
     parts += [
         "bat_handle_x REAL",
         "bat_handle_y REAL",
@@ -239,6 +246,7 @@ def _build_actor_frame_row(
     apex: float,
     world_pos: dict[int, "list[float]"],
     bat_pos: tuple[float, float, float] | None,
+    world_rot: dict[int, tuple[float, float, float, float]] | None = None,
 ) -> tuple:
     row = [
         game_pk, segment_idx, frame_num, actor_uid,
@@ -251,6 +259,11 @@ def _build_actor_frame_row(
             row.extend([None, None, None])
         else:
             row.extend([float(p[0]), float(p[1]), float(p[2])])
+        q = world_rot.get(bone_id) if world_rot else None
+        if q is None:
+            row.extend([None, None, None, None])
+        else:
+            row.extend([float(q[0]), float(q[1]), float(q[2]), float(q[3])])
     if bat_pos is None:
         row.extend([None, None, None])
     else:
@@ -265,7 +278,8 @@ def _actor_frame_insert_sql() -> str:
         "is_gap", "scale", "ground", "apex",
     ]
     for _, name in JOINT_COLS:
-        cols += [f"{name}_x", f"{name}_y", f"{name}_z"]
+        cols += [f"{name}_x", f"{name}_y", f"{name}_z",
+                 f"{name}_qx", f"{name}_qy", f"{name}_qz", f"{name}_qw"]
     cols += ["bat_handle_x", "bat_handle_y", "bat_handle_z"]
     placeholders = ", ".join("?" * len(cols))
     return f"INSERT OR REPLACE INTO actor_frame ({', '.join(cols)}) VALUES ({placeholders})"
@@ -443,6 +457,7 @@ def ingest_segment(
                 quats_xyzw=quats,
             )
             world_pos = {bid: list(p) for bid, p in ws.bone_world_pos.items()}
+            world_rot = dict(ws.bone_world_rot) if ws.bone_world_rot else None
             label_info = labels_dict.get(a.uid, {})
             mlb_id = label_info.get("actor")
             atype = label_info.get("type")
@@ -450,7 +465,7 @@ def ingest_segment(
             actor_rows.append(_build_actor_frame_row(
                 game_pk, segment_idx, f.num, time_unix, ts, is_gap,
                 a.uid, atype, mlb_id, a.scale, a.ground, a.apex,
-                world_pos, bat,
+                world_pos, bat, world_rot,
             ))
 
     pe_sql = pitch_event_insert_sql or _pitch_event_insert_sql()
