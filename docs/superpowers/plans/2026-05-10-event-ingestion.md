@@ -6,7 +6,7 @@
 
 **Architecture:** Add new FlatBuffer table readers in `src/fieldvision/wire_schemas.py` for `GameEventWire`, `TrackedEventWire`, and the highest-value event-data tables (`PlayEventDataWire`, `CountEventDataWire`, `AtBatEventDataWire`, `HandedEventDataWire`, `BallPitchDataWire`, `BatImpactEventDataWire`). Extend `TrackingFrame` to populate parsed event lists, extend `storage.py` with a richer `game_event` schema and a new `pitch_event` table, and extend `ingest_segment` to write event rows. Validate by re-ingesting an existing sample game and comparing pitch counts to MLB statsapi.
 
-**Tech Stack:** Python 3.11, hand-rolled FlatBuffer reader (`flatbuf_runtime.ByteBuffer`), SQLite (per-game DB), pytest for unit tests, urllib for statsapi cross-checks. Schemas come from `gd.bvg_poser.min.js` (the MLB Gameday FieldVision bundle).
+**Tech Stack:** Python 3.11, hand-rolled FlatBuffer reader (`flatbuf_runtime.ByteBuffer`), SQLite (per-game DB), pytest for unit tests, urllib for statsapi cross-checks. Schemas come from `gd.@bvg_poser.min.js` (the MLB Gameday FieldVision bundle).
 
 **Current state pre-plan:**
 - `src/fieldvision/wire_schemas.py` decodes `TrackingDataWire`, `TrackingFrameWire` (frame-level metadata + actorPoses + inferredBat + ballPosition + rawJoints), `ActorPoseWire`, `SkeletalPlayerWire`, `TrackingBatPositionWire`, `Vec3`, and the smallest-three quaternion unpacker.
@@ -14,7 +14,7 @@
 - `src/fieldvision/storage.py` has an empty stub `game_event` table (`event_type TEXT, data_json TEXT`) but `ingest_segment` never inserts into it.
 - Daemon `scripts/fv_daemon.py` runs against `main` via launchd; the in-memory copy is unaffected by file edits until restart. We can develop on a feature branch safely.
 - 27 captured games exist in `samples/binary_capture_*/`. We will use `samples/binary_capture_823141/` (already had decoded.json work done against it) as our primary fixture.
-- The JS bundle `gd.bvg_poser.min.js` is **not on disk** — the previous session decoded it but didn't save a copy. **Task 1** is recovering it via a DevTools paste snippet (same pattern as `scripts/snippets/refresh_token.js`).
+- The JS bundle is **already on disk** at `samples/mlb_bundles/gd.@bvg_poser.min.js` (~1.7 MB). It's a public, unauthenticated static asset on MLB's CDN — `scripts/fetch_mlb_bundles.sh` re-fetches it (plus `gd.min.js` and `gd.@bvg_poser-fallback.min.js`) in one curl per file, no JWT / browser session / DevTools needed. **An earlier draft of this plan mistakenly assumed the bundle required a DevTools paste; that's wrong, and Task 1 below has been rewritten accordingly.**
 
 **Out of scope for this plan (deferred to Phase A.2):**
 - `ballPolynomials[]` (pitch trajectory polynomials)
@@ -28,7 +28,7 @@
 - *Modify* `src/fieldvision/wire_schemas.py` — add `GameEventWire`, `TrackedEventWire`, event-data dataclasses + readers, union dispatcher, extend `TrackingFrame` + `read_tracking_frame` to populate event lists.
 - *Modify* `src/fieldvision/storage.py` — replace `game_event` schema with structured columns, add `pitch_event` table, add insert SQL helpers, extend `ingest_segment` to write event/pitch rows.
 - *Modify* `scripts/load_to_db.py` — include `pitch_event` in the `--rebuild` truncate list.
-- *Create* `scripts/snippets/fetch_bundle.js` — DevTools paste to grab `gd.bvg_poser.min.js`.
+- *(Already exists, do NOT recreate)* `scripts/fetch_mlb_bundles.sh` — re-downloads MLB's three JS bundles from the public CDN. Bundles land in `samples/mlb_bundles/` (gitignored). Task 1 just runs this.
 - *Create* `scripts/extract_event_offsets.py` — one-shot tool that scans the JS bundle and emits a markdown table of vtable offsets per class (used as ground truth for the schema port).
 - *Create* `tests/__init__.py`, `tests/conftest.py`, `tests/test_event_schemas.py` — pytest unit tests against `samples/binary_capture_823141/mlb_823141_segment_*.bin` fixtures. We pick segments that empirically contain the events we need (Task 4.b finds them).
 - *Create* `scripts/validate_pitch_count.py` — fetch statsapi `game/feed/live` for a gamePk, count pitches, compare to `pitch_event` row count.
@@ -81,93 +81,64 @@ Note the path printed — every subsequent `pytest` / `python` command should us
 
 ---
 
-## Task 1: Recover `gd.bvg_poser.min.js` from MLB
+## Task 1: Ensure the MLB JS bundle is on disk
 
-**Files:**
-- Create: `scripts/snippets/fetch_bundle.js`
+**Files:** none to create. Use the existing `scripts/fetch_mlb_bundles.sh`.
 
-This is a one-time recon step. Spencer (the user) runs the DevTools snippet in his logged-in mlb.com Chrome tab; it identifies the bundle URL from `performance.getEntriesByType('resource')`, downloads the source, and saves it to `~/Downloads`. We then move it into the repo.
+The bundle is a public, unauthenticated static asset on MLB's CDN at
+`https://prod-gameday.mlbstatic.com/app-mlb/5.50.0-mlb.5/gd.@bvg_poser.min.js`.
+A previous draft of this plan thought this needed a DevTools paste from a
+logged-in Chrome session. **That was wrong** — `curl` works directly.
+`scripts/fetch_mlb_bundles.sh` automates the download (it also grabs
+`gd.min.js` and `gd.@bvg_poser-fallback.min.js`).
 
-- [ ] **Step 1: Write the DevTools snippet**
+The bundles directory `samples/mlb_bundles/` is gitignored (MLB's IP,
+don't commit) — so you can't assume it's on disk just because the repo's
+fresh.
 
-Create `scripts/snippets/fetch_bundle.js` with:
-
-```javascript
-(async () => {
-  // Find the bvg_poser bundle URL from network resource entries.
-  const entries = performance.getEntriesByType('resource');
-  const candidates = entries
-    .map(e => e.name)
-    .filter(u => /bvg[_.-]?poser.*\.js/i.test(u) || /gd\.bvg.*\.js/i.test(u));
-  if (candidates.length === 0) {
-    console.error('No bvg_poser bundle found. Open a game with FieldVision/3D view first, then re-run.');
-    return;
-  }
-  const url = candidates[0];
-  console.log('Fetching:', url);
-
-  // Same-origin fetch — uses your authenticated session cookies.
-  const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) { console.error('HTTP', res.status); return; }
-  const src = await res.text();
-
-  const blob = new Blob([src], { type: 'application/javascript' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'gd.bvg_poser.min.js';
-  document.body.appendChild(a); a.click(); a.remove();
-  console.log(`Saved gd.bvg_poser.min.js (${src.length.toLocaleString()} chars) to ~/Downloads`);
-  console.log('Source URL:', url);
-})();
-```
-
-- [ ] **Step 2: Have Spencer run the snippet**
-
-Hand off to the user with this message:
-
-> "Open mlb.com in your normal Chrome (logged in), navigate to a recent live game's Gameday view (so the FieldVision bundle loads), open DevTools (Cmd+Opt+J), and paste the contents of `scripts/snippets/fetch_bundle.js`. It saves the bundle to `~/Downloads/gd.bvg_poser.min.js`. Then run:
->
-> ```
-> mv ~/Downloads/gd.bvg_poser.min.js scripts/snippets/gd.bvg_poser.min.js
-> ```
->
-> Confirm when done."
-
-**Wait for confirmation before proceeding.** If Spencer says the snippet returns "No bvg_poser bundle found", the bundle name has changed; broaden the regex (e.g. `/bvg|poser|fieldvision/i`) and try again.
-
-**Fallback if the bundle truly cannot be recovered:** the entire plan from Task 2
-onward depends on having the JS source. If MLB has stopped serving it (or Spencer's
-account no longer has FieldVision entitlement), an empirical-recovery path exists:
-walk the vtables of `gameEvents[]` items in a sample bin, dump field count + raw
-bytes per offset, and probe field types by looking at value plausibility. This is
-a separate ~half-day of work; if Task 1 deadlocks, write a follow-up plan
-`2026-MM-DD-empirical-event-schemas.md` rather than mixing it in here.
-
-- [ ] **Step 3: Verify the bundle is present and looks right**
+- [ ] **Step 1: Run the fetch script (idempotent)**
 
 ```bash
-ls -lh scripts/snippets/gd.bvg_poser.min.js
-grep -c 'getRootAs' scripts/snippets/gd.bvg_poser.min.js
-grep -o 'getRootAs[A-Z][A-Za-z]*' scripts/snippets/gd.bvg_poser.min.js | sort -u
+bash scripts/fetch_mlb_bundles.sh
+```
+
+Expected output: three lines, each ending with a byte count. The
+`gd.@bvg_poser.min.js` line should report ~1.7 million bytes.
+
+- [ ] **Step 2: Verify the bundle is present and looks right**
+
+```bash
+BUNDLE=samples/mlb_bundles/gd.@bvg_poser.min.js
+ls -lh "$BUNDLE"
+grep -c 'getRootAs' "$BUNDLE"
+grep -o 'getRootAs[A-Z][A-Za-z]*' "$BUNDLE" | sort -u
 ```
 
 Expected:
-- File size in the 100KB–2MB range.
-- `getRootAs` count ≥ 10.
-- The unique-name list includes (substrings): `BallPitch`, `PlayEvent`, `CountEvent`, `AtBatEvent`, `HandedEvent`, `BatImpactEvent`, `TrackingFrame`, `GameEvent`, `TrackedEvent`. If any are missing, this might be a partial bundle — STOP and re-fetch.
+- File size ~1.7 MB.
+- `getRootAs` count ≥ 30.
+- The unique-name list includes (substrings): `BallPitch`, `PlayEvent`, `CountEvent`, `AtBatEvent`, `HandedEvent`, `BatImpactEvent`, `TrackingFrame`, `GameEvent`, `TrackedEvent`. If any are missing, this might be a partial bundle or MLB shipped a new app version — STOP and confirm with Spencer.
 
-- [ ] **Step 4: Add the bundle to .gitignore (it's MLB's IP, don't ship it)**
+- [ ] **Step 3: No commit needed**
 
-```bash
-grep -q 'gd.bvg_poser.min.js' .gitignore || echo 'scripts/snippets/gd.bvg_poser.min.js' >> .gitignore
-```
+`scripts/fetch_mlb_bundles.sh` was added in a prior commit and the
+bundles directory is already gitignored. Nothing to commit for Task 1.
 
-- [ ] **Step 5: Commit**
+**Fallback if `fetch_mlb_bundles.sh` ever 404s:** MLB has shipped a new
+Gameday app version and the URL needs updating. Open
+`https://www.mlb.com/gameday/<any-live-game>/live` in Chrome, open
+DevTools → Network → filter by `gd.`, find the actual current version
+slug (today it's `app-mlb/5.50.0-mlb.5/`), update `BASE` in
+`scripts/fetch_mlb_bundles.sh`, and re-run. Spencer doesn't need to do
+this himself — any session that hits the 404 can do it from network
+inspection.
 
-```bash
-git add scripts/snippets/fetch_bundle.js .gitignore
-git commit -m "Add DevTools snippet to fetch the MLB FieldVision JS bundle"
-```
+**Last-resort fallback if the bundle is truly unrecoverable** (e.g. MLB
+yanks the public asset): walk the vtables of `gameEvents[]` items in a
+sample bin empirically — dump field count + raw bytes per offset and
+probe field types by value plausibility. ~half-day of work. Write it up
+as a separate plan `2026-MM-DD-empirical-event-schemas.md` rather than
+mixing it in here.
 
 ---
 
@@ -190,7 +161,7 @@ Create `scripts/extract_event_offsets.py`:
 ```python
 """Extract vtable field offsets for FieldVision event classes from the JS bundle.
 
-Reads scripts/snippets/gd.bvg_poser.min.js and prints, for each class of
+Reads samples/mlb_bundles/gd.@bvg_poser.min.js and prints, for each class of
 interest, an ordered list of (vtable_offset, fieldName, addExpression).
 """
 
@@ -201,7 +172,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-BUNDLE = REPO_ROOT / "scripts" / "snippets" / "gd.bvg_poser.min.js"
+BUNDLE = REPO_ROOT / "samples" / "mlb_bundles" / "gd.@bvg_poser.min.js"
 
 CLASSES_OF_INTEREST = [
     "GameEventWire",
@@ -317,10 +288,10 @@ $PY scripts/extract_event_offsets.py | tee docs/superpowers/plans/2026-05-10-eve
 ```
 
 Expected: a markdown table per class, each with 3+ rows. If any class shows "NOT FOUND" or 0 methods:
-- The bundle may use a different name (try `grep -o 'getRootAs[A-Z][A-Za-z]*' scripts/snippets/gd.bvg_poser.min.js | sort -u`) — adjust `CLASSES_OF_INTEREST` and re-run.
+- The bundle may use a different name (try `grep -o 'getRootAs[A-Z][A-Za-z]*' samples/mlb_bundles/gd.@bvg_poser.min.js | sort -u`) — adjust `CLASSES_OF_INTEREST` and re-run.
 - If `add*` methods aren't matched, the regex may need broadening (e.g., minifiers sometimes drop `static` keyword in extracted form). Inspect the relevant block visually:
   ```bash
-  grep -o 'getRootAsBallPitchDataWire[^}]*}' scripts/snippets/gd.bvg_poser.min.js | head -c 2000
+  grep -o 'getRootAsBallPitchDataWire[^}]*}' samples/mlb_bundles/gd.@bvg_poser.min.js | head -c 2000
   ```
 
 - [ ] **Step 3: Identify the union dispatcher (gameEvents discriminator)**
@@ -328,7 +299,7 @@ Expected: a markdown table per class, each with 3+ rows. If any class shows "NOT
 `TrackingFrameWire.gameEvents[]` is a vector of `GameEventWire` tables. Each `GameEventWire` carries a `dataType` (uint enum) plus a `data` indirect table whose true type is determined by the enum. Find the union enum:
 
 ```bash
-grep -oE '(?:Lue|GameEventDataType|EventDataType)[ ={a-zA-Z]+' scripts/snippets/gd.bvg_poser.min.js | head -40
+grep -oE '(?:Lue|GameEventDataType|EventDataType)[ ={a-zA-Z]+' samples/mlb_bundles/gd.@bvg_poser.min.js | head -40
 ```
 
 Expected: an object literal mapping integers to class constructors. Capture this mapping into the offsets doc by hand at the bottom (3-line addition):
@@ -726,7 +697,7 @@ Append to `src/fieldvision/wire_schemas.py`:
 ```python
 # ────────────────────────────────────────────────────────────
 # GameEventWire — wrapper for a discrete game event in a frame.
-# Vtable from gd.bvg_poser.min.js extract_event_offsets.py output:
+# Vtable from gd.@bvg_poser.min.js extract_event_offsets.py output:
 #
 #   field 0 (offset  4): dataType   uint8/uint16  (union discriminator; see Lue map below)
 #   field 1 (offset  6): data       indirect to the typed event-data table
