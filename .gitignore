@@ -82,3 +82,13 @@ htmlcov/
 !data/masks/.gitkeep
 !data/processed/.gitkeep
 !logs/.gitkeep
+
+# fieldvision: raw MLB wire data + ingested SQLite DBs (59+ GB)
+# Lives at fieldvision/data/ and fieldvision/samples/ on local disk only.
+fieldvision/data/
+fieldvision/samples/
+fieldvision/state/
+fieldvision/scheduler.log
+fieldvision/.fv_token.txt
+fieldvision/.fv_captures/
+fieldvision/.mlb_profile/
