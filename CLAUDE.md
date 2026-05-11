@@ -182,6 +182,35 @@ is either a headless-Chrome-stays-logged-in setup (silent refresh via
 hidden iframe) or an iOS shortcut + iCloud-watcher to automate the daily
 paste from Spencer's phone.
 
+## MLB JS bundles (the schema source-of-truth)
+
+We don't have the FlatBuffer schemas in any standalone form — they live
+inside MLB's frontend JavaScript bundles. To extend the decoder (e.g.
+Phase A of `PROJECT_PREDICTION.md` — decoding gameEvents / trackedEvents)
+you'll need these bundles on disk:
+
+```
+samples/mlb_bundles/gd.min.js                     ~5.0 MB
+samples/mlb_bundles/gd.@bvg_poser.min.js          ~1.7 MB  (most schemas live here)
+samples/mlb_bundles/gd.@bvg_poser-fallback.min.js ~1.7 MB
+```
+
+These are **public, unauthenticated** static assets on MLB's CDN. No JWT,
+no Chrome session, no DevTools needed. Re-fetch with:
+
+```bash
+bash ~/fieldvision/scripts/fetch_mlb_bundles.sh
+```
+
+The bundles are gitignored (they're MLB's code) but reproducibly
+re-fetchable from `https://prod-gameday.mlbstatic.com/app-mlb/5.50.0-mlb.5/`.
+
+The previous session decoded enough of `gd.@bvg_poser.min.js` to extract
+`TrackingDataWire`, `TrackingFrameWire`, `ActorPoseWire`,
+`SkeletalPlayerWire`, `TrackingBatPositionWire`. The remaining decode
+work (PlayEventDataWire, BallPitchDataWire, CountEventDataWire, etc.) is
+in the same bundle — search for `getRootAs<TypeName>` static methods.
+
 ## Critical gotchas (each of these cost us hours)
 
 1. **macOS TCC blocks launchd from reading `~/Documents`.** Repo MUST live outside `~/Documents`, `~/Desktop`, `~/Downloads`. We moved it to `~/fieldvision/`. If you re-organize, keep it out of those folders or grant Full Disk Access to the conda Python.

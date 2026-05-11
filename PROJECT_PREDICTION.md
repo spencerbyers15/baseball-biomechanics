@@ -204,6 +204,11 @@ even with leave-one-pitcher-out validation.
 
 ### Phase A — Decode the rest of the wire format
 
+**Prerequisite (30 seconds):** make sure `samples/mlb_bundles/gd.@bvg_poser.min.js`
+exists. If not, `bash scripts/fetch_mlb_bundles.sh`. This is the JS
+file that contains every FlatBuffer schema we need to extract; it's a
+**public, unauthenticated** CDN asset, no JWT or DevTools paste required.
+
 1. Extend `wire_schemas.py` with: `GameEventWire`, `PlayEventDataWire`,
    `CountEventDataWire`, `AtBatEventDataWire`, `HandedEventDataWire`,
    `BallPitchDataWire`, `BallHitDataWire`, `BatImpactEventDataWire`,

@@ -68,4 +68,8 @@ samples/dfv_*.png
 # Rendered visualizations of decoded data (derivative of ToS-sensitive source)
 samples/decoded_*.mp4
 samples/decoded_*.png
+
+# MLB's JS bundles cached locally for schema reverse-engineering
+# (publicly fetchable; not our code, don't commit)
+samples/mlb_bundles/
 .claude/settings.local.json
