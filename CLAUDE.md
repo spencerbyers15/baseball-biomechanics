@@ -100,6 +100,32 @@ Columns:
 **`ball_frame`** — ball position when tracked. PK same shape.
 - `ball_x/y/z` in stadium feet, Y up.
 
+**`pitch_event`** — frame-level pitch segmentation markers from wire data.
+Columns: `event_type` (PLAY_EVENT | BEGIN_OF_PLAY | BALL_WAS_RELEASED | …),
+`play_id` (UUID matching statsapi; populated for PLAY_EVENT),
+`pos_x/y/z` (populated for tracked events with positions in stadium feet).
+Index on play_id, event_type, time_unix. Multiple rows per pitch (one per
+event marker observed during the play).
+
+**`pitch_label`** — per-pitch labels from MLB statsapi
+(`/api/v1.1/game/{gamePk}/feed/live`). Keyed on (game_pk, play_id).
+Holds pitch_type, start_speed/end_speed, spin_rate, release_x/y/z, plate_x/z,
+sz_top/sz_bot, result_call, batter_id/pitcher_id, count state
+(balls_before/strikes_before/outs_before), ab_index, pitch_number,
+start_time/end_time. Indexed by pitcher, batter, and pitch_type. Populated
+by `scripts/ingest_pitch_labels.py --game <pk>` (independent of wire ingestion).
+
+**Recipe to get the 90 frames before pitch X:**
+```sql
+WITH p AS (
+  SELECT pl.play_id, pl.start_time_unix
+    FROM pitch_label pl WHERE pl.play_id = '<uuid>'
+)
+SELECT af.* FROM actor_frame af, p
+ WHERE af.time_unix BETWEEN p.start_time_unix - 3 AND p.start_time_unix
+ ORDER BY af.time_unix DESC LIMIT 90;
+```
+
 **`players`, `bones`, `labels`, `meta`** — small lookup tables.
 - `players(mlb_player_id, jersey_number, role_id, team, position_abbr, parent_team_id)`
 - `bones(bone_id, name)` — 0=Pelvis, 21=Head, 28=HandRT, etc. (canonical map from metadata.json's boneIdMap)
@@ -112,34 +138,24 @@ One row per captured game. Useful for `SELECT db_path FROM games WHERE captured_
 
 ### NOT YET INGESTED but available in the wire format
 
-`TrackingFrameWire` ALSO contains, per frame, fields we currently skip:
+- `gameEvents[]` types other than PlayEvent (CountEvent, AtBatEvent, HandedEvent,
+  BatImpactEvent, etc.) — statsapi covers all of these per pitch, so we don't
+  decode them.
+- `trackedEvents[]` extended fields beyond `eventType` + position (timestamp,
+  batSide, atBatNumber, etc. — most are sentinel for the events we capture).
+- `ballPolynomials[]` — pitch trajectory polynomials. Statsapi gives us
+  pitch type / velocity / spin / release / plate location, so we skip these.
 
-- **`gameEvents[]`** — union over discrete events (typed via `dataType`):
-  - `CountEventDataWire` (balls/strikes/outs)
-  - `PlayEventDataWire` (with strike zone)
-  - `AtBatEventDataWire`
-  - `InningEventDataWire`
-  - `HandedEventDataWire` (batter/pitcher handedness)
-  - `PositionAssignmentEventDataWire`
-  - `TeamScoreEventDataWire`
-  - `BattingOrderEventDataWire`
-  - `BatImpactEventDataWire`
-  - `HighFrequencyBatMarkerEventDataWire`
-  - `ABSEventDataWire` (automated ball-strike zone)
-  - `LiveActionEventDataWire`, `GumboTimecodeEventDataWire`, `StatusEventDataWire`
-- **`trackedEvents[]`** — tracked physics events:
-  - `BallPitchDataWire` (with release point, trajectory, spin)
-  - `BallHitDataWire`
-  - `BallThrowData`
-  - `BallBounceDataWire`
-- **`ballPolynomials[]`** — pitch trajectory polynomials
-- **`inferredBat`** — already decoded into `bat_frame`
+**As of 2026-05-10 we ingest:**
+- `pitch_event` — frame-level markers (PLAY_EVENT with play_id, plus
+  BEGIN_OF_PLAY / END_OF_PLAY / BALL_WAS_RELEASED / BALL_WAS_CAUGHT /
+  BALL_WAS_PITCHED / etc. from trackedEvents)
+- `pitch_label` — per-pitch labels from MLB statsapi (pitch type, velocity,
+  spin, release point, plate position, strike zone, result), keyed on play_id
 
-**Adding ingestion for these is the single most valuable next step** —
-they give us pitch-by-pitch labels (which we need for the prediction
-project). The schemas for all of these classes are in
-`gd.bvg_poser.min.js`; the previous session has all the field offsets
-documented in their code (search for `getRootAs...` static methods).
+These two tables join on `play_id` to give labeled per-pitch frame ranges
+for downstream feature engineering. Wire `PlayEvent.playId` is byte-identical
+to statsapi `playId` (verified 26/26 overlap on a 500-segment sample).
 
 ## Capture pipeline
 
@@ -241,8 +257,13 @@ in the same bundle — search for `getRootAs<TypeName>` static methods.
 
 1. **OAuth refresh-token investigation** — probe `okta-token-storage`, decide on autonomous-refresh strategy
 2. **Pi 4 migration** — guide is in `MIGRATE_TO_PI.md`, ready to execute
-3. **Ingest `gameEvents` + `trackedEvents` + `ballPolynomials`** — required for the prediction project (see `PROJECT_PREDICTION.md`)
-4. **Investigate `rawJoints` field** — 0/1500 frames had it in our samples; might be live-only or specific to certain segments
+3. **Decode richer wire events** (BALL_BOUNCE polynomials, ABSEvent, etc.) —
+   deferred. Statsapi covers all per-pitch labels we currently need; only
+   reach for wire decoding when statsapi gaps appear.
+4. **Backfill statsapi pitch_label for all captured games** — one
+   command per game (`python scripts/ingest_pitch_labels.py --game <pk>`),
+   ~5s each. Worth doing before historical .bin files age out of retention.
+5. **Investigate `rawJoints` field** — 0/1500 frames had it in our samples; might be live-only or specific to certain segments
 
 ## How to verify things work after a context-free start
 
