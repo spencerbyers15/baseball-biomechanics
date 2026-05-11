@@ -124,52 +124,58 @@ CREATE TABLE IF NOT EXISTS bat_frame (
     PRIMARY KEY (game_pk, segment_idx, frame_num)
 );
 
-CREATE TABLE IF NOT EXISTS game_event (
-    game_pk INTEGER NOT NULL,
-    segment_idx INTEGER NOT NULL,
-    frame_num INTEGER NOT NULL,
-    time_unix REAL NOT NULL,
-    event_type TEXT NOT NULL,           -- wire class name (e.g. 'CountEvent', 'PlayEvent')
-    data_type INTEGER,                  -- raw union discriminator
-    is_key_framed INTEGER,              -- 1 if from TrackingDataWire.eventKeyFrame
-    play_id TEXT,                       -- MLB GUID; joins to statsapi pitch records
-    -- Common parsed fields, populated when the event type carries them:
-    balls INTEGER,
-    strikes INTEGER,
-    outs INTEGER,
-    inning INTEGER,
-    top_inning INTEGER,                 -- 1 = top of inning, 0 = bottom
-    batter_id INTEGER,
-    pitcher_id INTEGER,
-    batter_handedness TEXT,             -- 'L' / 'R' / 'S'
-    pitcher_handedness TEXT,
-    data_json TEXT                      -- raw remainder for unparsed fields
-);
-CREATE INDEX IF NOT EXISTS idx_event_type ON game_event(event_type, time_unix);
-CREATE INDEX IF NOT EXISTS idx_event_play ON game_event(play_id);
-CREATE INDEX IF NOT EXISTS idx_event_time ON game_event(time_unix);
-
 CREATE TABLE IF NOT EXISTS pitch_event (
     game_pk INTEGER NOT NULL,
     segment_idx INTEGER NOT NULL,
     frame_num INTEGER NOT NULL,
     time_unix REAL NOT NULL,
-    play_id TEXT,
-    release_x REAL, release_y REAL, release_z REAL,
-    plate_x REAL, plate_y REAL, plate_z REAL,
-    velocity_release REAL,              -- mph (we'll confirm units empirically)
-    velocity_plate REAL,
-    spin_rate REAL,                     -- rpm
-    spin_axis_x REAL, spin_axis_y REAL, spin_axis_z REAL,
-    pitch_type TEXT,                    -- 'FF', 'SL', 'CH', etc. (statsapi-compatible code)
-    pitch_type_id INTEGER,              -- raw enum from BallPitchDataWire
-    extension REAL,                     -- pitcher extension (ft from rubber to release)
-    sz_top REAL, sz_bottom REAL,        -- strike zone for this batter (ft above ground)
-    sz_left REAL, sz_right REAL,        -- strike zone left/right (ft from plate centerline)
-    PRIMARY KEY (game_pk, segment_idx, frame_num)
+    event_type TEXT NOT NULL,           -- 'PLAY_EVENT' | 'BEGIN_OF_PLAY' | 'BALL_WAS_RELEASED' | etc.
+    play_id TEXT,                       -- populated for PLAY_EVENT (from PlayEventDataWire.playId); NULL for tracked events that don't carry one
+    pos_x REAL, pos_y REAL, pos_z REAL  -- populated for tracked events that have X/Y/Z (e.g., BALL_WAS_RELEASED)
 );
-CREATE INDEX IF NOT EXISTS idx_pitch_play ON pitch_event(play_id);
-CREATE INDEX IF NOT EXISTS idx_pitch_time ON pitch_event(time_unix);
+CREATE INDEX IF NOT EXISTS idx_pe_play   ON pitch_event(play_id);
+CREATE INDEX IF NOT EXISTS idx_pe_type   ON pitch_event(event_type, time_unix);
+CREATE INDEX IF NOT EXISTS idx_pe_time   ON pitch_event(time_unix);
+
+CREATE TABLE IF NOT EXISTS pitch_label (
+    game_pk INTEGER NOT NULL,
+    play_id TEXT NOT NULL,
+    ab_index INTEGER,
+    pitch_number INTEGER,
+    inning INTEGER,
+    top_inning INTEGER,                 -- 1=top, 0=bottom
+    batter_id INTEGER,
+    pitcher_id INTEGER,
+    batter_side TEXT,                   -- 'L' | 'R'
+    pitcher_throws TEXT,                -- 'L' | 'R'
+    balls_before INTEGER,
+    strikes_before INTEGER,
+    outs_before INTEGER,
+    pitch_type TEXT,                    -- 'FF', 'SL', etc. (statsapi details.type.code)
+    pitch_type_desc TEXT,
+    start_speed REAL,                   -- mph at release
+    end_speed REAL,                     -- mph at plate
+    spin_rate REAL,
+    spin_direction REAL,
+    release_x REAL, release_y REAL, release_z REAL,
+    release_extension REAL,
+    plate_x REAL, plate_z REAL,
+    sz_top REAL, sz_bot REAL,
+    result_call TEXT,                   -- 'B' | 'S' | 'X'
+    result_desc TEXT,
+    is_in_play INTEGER,
+    is_strike INTEGER,
+    is_ball INTEGER,
+    start_time TEXT,                    -- ISO from statsapi
+    end_time TEXT,
+    start_time_unix REAL,
+    end_time_unix REAL,
+    PRIMARY KEY (game_pk, play_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pl_pitcher ON pitch_label(pitcher_id);
+CREATE INDEX IF NOT EXISTS idx_pl_batter  ON pitch_label(batter_id);
+CREATE INDEX IF NOT EXISTS idx_pl_type    ON pitch_label(pitch_type);
+CREATE INDEX IF NOT EXISTS idx_pl_time    ON pitch_label(start_time_unix);
 """
 
 
@@ -337,33 +343,37 @@ def load_lookup_tables(
     return labels_dict
 
 
-def _game_event_insert_sql() -> str:
-    cols = [
-        "game_pk", "segment_idx", "frame_num", "time_unix",
-        "event_type", "data_type", "is_key_framed", "play_id",
-        "balls", "strikes", "outs",
-        "inning", "top_inning",
-        "batter_id", "pitcher_id",
-        "batter_handedness", "pitcher_handedness",
-        "data_json",
-    ]
-    placeholders = ", ".join("?" * len(cols))
-    return f"INSERT INTO game_event ({', '.join(cols)}) VALUES ({placeholders})"
-
-
 def _pitch_event_insert_sql() -> str:
     cols = [
         "game_pk", "segment_idx", "frame_num", "time_unix",
-        "play_id",
-        "release_x", "release_y", "release_z",
-        "plate_x", "plate_y", "plate_z",
-        "velocity_release", "velocity_plate",
-        "spin_rate", "spin_axis_x", "spin_axis_y", "spin_axis_z",
-        "pitch_type", "pitch_type_id", "extension",
-        "sz_top", "sz_bottom", "sz_left", "sz_right",
+        "event_type", "play_id",
+        "pos_x", "pos_y", "pos_z",
     ]
     placeholders = ", ".join("?" * len(cols))
-    return f"INSERT OR REPLACE INTO pitch_event ({', '.join(cols)}) VALUES ({placeholders})"
+    return f"INSERT INTO pitch_event ({', '.join(cols)}) VALUES ({placeholders})"
+
+
+def _pitch_label_insert_sql() -> str:
+    cols = [
+        "game_pk", "play_id",
+        "ab_index", "pitch_number",
+        "inning", "top_inning",
+        "batter_id", "pitcher_id",
+        "batter_side", "pitcher_throws",
+        "balls_before", "strikes_before", "outs_before",
+        "pitch_type", "pitch_type_desc",
+        "start_speed", "end_speed",
+        "spin_rate", "spin_direction",
+        "release_x", "release_y", "release_z", "release_extension",
+        "plate_x", "plate_z",
+        "sz_top", "sz_bot",
+        "result_call", "result_desc",
+        "is_in_play", "is_strike", "is_ball",
+        "start_time", "end_time",
+        "start_time_unix", "end_time_unix",
+    ]
+    placeholders = ", ".join("?" * len(cols))
+    return f"INSERT OR REPLACE INTO pitch_label ({', '.join(cols)}) VALUES ({placeholders})"
 
 
 def ingest_segment(
