@@ -188,6 +188,81 @@ def read_inferred_bat(bb: ByteBuffer, pos: int) -> InferredBat:
 
 
 # ────────────────────────────────────────────────────────────
+# GameEventWire — wrapper for a discrete game event in a frame.
+# Vtable from extract_event_offsets.py output:
+#   field 0 (offset 4): dataType    uint8   (union discriminator; 7 = PlayEvent)
+#   field 1 (offset 6): data        indirect to typed sub-table (e.g. PlayEventDataWire)
+#   field 2 (offset 8): time        float64
+#   field 3 (offset 10): isKeyFramed int8
+# We only decode PlayEventDataWire (dataType=7) for play_id; statsapi
+# provides count/atbat/handedness without needing wire decode.
+# ────────────────────────────────────────────────────────────
+
+
+@dataclass
+class GameEvent:
+    dataType: int
+    time: Optional[float]
+    isKeyFramed: bool
+    playId: Optional[str]   # populated when dataType==7 (PlayEvent), else None
+
+
+def read_game_event(bb: ByteBuffer, pos: int) -> GameEvent:
+    o_dt = bb.field_offset(pos, 4)
+    o_data = bb.field_offset(pos, 6)
+    o_time = bb.field_offset(pos, 8)
+    o_kf = bb.field_offset(pos, 10)
+
+    dt = bb.read_uint8(pos + o_dt) if o_dt else 0
+    time_v = bb.read_float64(pos + o_time) if o_time else None
+    kf = bool(bb.read_int8(pos + o_kf)) if o_kf else False
+    play_id: Optional[str] = None
+    if dt == 7 and o_data:
+        # PlayEventDataWire is at the indirect offset; PlayId is its vtoff 8
+        pe_pos = bb.indirect(pos + o_data)
+        o_pid = bb.field_offset(pe_pos, 8)
+        if o_pid:
+            play_id = bb.string(pe_pos + o_pid)
+    return GameEvent(dataType=dt, time=time_v, isKeyFramed=kf, playId=play_id)
+
+
+# ────────────────────────────────────────────────────────────
+# TrackedEventWire — flat 14-field record. Self-discriminating via eventType (string).
+# We extract just the fields needed for pitch segmentation: eventType, x, y, z.
+# Other fields exist (timestamp, batSide, pitchHand, atBatNumber, pitchNumber,
+# pickoffNumber, szTop, szBot, position, eventTypeId) but are sentinel
+# (-1 / "not-set") for the events we observe in practice.
+# ────────────────────────────────────────────────────────────
+
+
+@dataclass
+class TrackedEvent:
+    eventType: Optional[str]
+    eventTypeId: Optional[int]
+    x: Optional[float]
+    y: Optional[float]
+    z: Optional[float]
+    timestamp: Optional[str]
+
+
+def read_tracked_event(bb: ByteBuffer, pos: int) -> TrackedEvent:
+    o_ts = bb.field_offset(pos, 4)
+    o_etype = bb.field_offset(pos, 20)
+    o_x = bb.field_offset(pos, 22)
+    o_y = bb.field_offset(pos, 24)
+    o_z = bb.field_offset(pos, 26)
+    o_etid = bb.field_offset(pos, 30)
+
+    ts = bb.string(pos + o_ts) if o_ts else None
+    etype = bb.string(pos + o_etype) if o_etype else None
+    x = bb.read_float32(pos + o_x) if o_x else None
+    y = bb.read_float32(pos + o_y) if o_y else None
+    z = bb.read_float32(pos + o_z) if o_z else None
+    etid = bb.read_int8(pos + o_etid) if o_etid else None
+    return TrackedEvent(eventType=etype, eventTypeId=etid, x=x, y=y, z=z, timestamp=ts)
+
+
+# ────────────────────────────────────────────────────────────
 # TrackingFrameWire — one frame
 # Vtable (from JS bundle's static add* methods):
 #   field 0  (offset  4): actorPoses   [ActorPose]
@@ -216,6 +291,8 @@ class TrackingFrame:
     actorPoses: list[ActorPose] = field(default_factory=list)
     rawJoints: list[SkeletalPlayer] = field(default_factory=list)
     inferredBat: Optional[InferredBat] = None
+    gameEvents: list[GameEvent] = field(default_factory=list)        # ← new
+    trackedEvents: list[TrackedEvent] = field(default_factory=list)  # ← new
 
 
 def read_tracking_frame(bb: ByteBuffer, pos: int) -> TrackingFrame:
@@ -257,8 +334,27 @@ def read_tracking_frame(bb: ByteBuffer, pos: int) -> TrackingFrame:
         # inferredBat is referenced via __indirect (offset to a separate table)
         inferred = read_inferred_bat(bb, bb.indirect(pos + o_inferred))
 
+    o_ge = bb.field_offset(pos, 8)
+    o_te = bb.field_offset(pos, 10)
+
+    game_events: list[GameEvent] = []
+    if o_ge:
+        v = bb.vector_data(pos + o_ge)
+        n = bb.vector_len(pos + o_ge)
+        for i in range(n):
+            elem_pos = bb.indirect(v + 4 * i)
+            game_events.append(read_game_event(bb, elem_pos))
+
+    tracked_events: list[TrackedEvent] = []
+    if o_te:
+        v = bb.vector_data(pos + o_te)
+        n = bb.vector_len(pos + o_te)
+        for i in range(n):
+            elem_pos = bb.indirect(v + 4 * i)
+            tracked_events.append(read_tracked_event(bb, elem_pos))
+
     return TrackingFrame(num, time_v, timestamp, isGap, gap_dur, ballPos,
-                         actors, raw, inferred)
+                         actors, raw, inferred, game_events, tracked_events)
 
 
 # ────────────────────────────────────────────────────────────

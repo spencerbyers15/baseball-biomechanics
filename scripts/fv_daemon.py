@@ -40,8 +40,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from fieldvision.storage import (_actor_frame_insert_sql, ingest_segment,
-                                 load_lookup_tables, open_game_db,
+from fieldvision.storage import (_actor_frame_insert_sql, _pitch_event_insert_sql,
+                                 ingest_segment, load_lookup_tables, open_game_db,
                                  open_registry, transaction, update_registry)
 
 
@@ -237,6 +237,7 @@ def scrape_game_once(game_pk: int, token: str) -> dict:
         labels_dict = {row[0]: {"actor": row[1], "type": row[2]}
                        for row in conn.execute("SELECT actor_uid, actor, actor_type FROM labels")}
     insert_sql = _actor_frame_insert_sql()
+    pe_sql = _pitch_event_insert_sql()
 
     fetched = 0
     auth_failed = False
@@ -255,7 +256,8 @@ def scrape_game_once(game_pk: int, token: str) -> dict:
         bin_path.write_bytes(b)
         try:
             with transaction(conn):
-                ingest_segment(conn, game_pk, i, bin_path, labels_dict, insert_sql)
+                ingest_segment(conn, game_pk, i, bin_path, labels_dict,
+                               insert_sql, pitch_event_insert_sql=pe_sql)
             set_last_segment(game_pk, i)
             fetched += 1
         except Exception as e:

@@ -124,16 +124,58 @@ CREATE TABLE IF NOT EXISTS bat_frame (
     PRIMARY KEY (game_pk, segment_idx, frame_num)
 );
 
-CREATE TABLE IF NOT EXISTS game_event (
+CREATE TABLE IF NOT EXISTS pitch_event (
     game_pk INTEGER NOT NULL,
-    segment_idx INTEGER,
-    frame_num INTEGER,
+    segment_idx INTEGER NOT NULL,
+    frame_num INTEGER NOT NULL,
     time_unix REAL NOT NULL,
-    event_type TEXT NOT NULL,
-    is_key_framed INTEGER,
-    data_json TEXT
+    event_type TEXT NOT NULL,           -- 'PLAY_EVENT' | 'BEGIN_OF_PLAY' | 'BALL_WAS_RELEASED' | etc.
+    play_id TEXT,                       -- populated for PLAY_EVENT (from PlayEventDataWire.playId); NULL for tracked events that don't carry one
+    pos_x REAL, pos_y REAL, pos_z REAL  -- populated for tracked events that have X/Y/Z (e.g., BALL_WAS_RELEASED)
 );
-CREATE INDEX IF NOT EXISTS idx_event_type ON game_event(event_type, time_unix);
+CREATE INDEX IF NOT EXISTS idx_pe_play   ON pitch_event(play_id);
+CREATE INDEX IF NOT EXISTS idx_pe_type   ON pitch_event(event_type, time_unix);
+CREATE INDEX IF NOT EXISTS idx_pe_time   ON pitch_event(time_unix);
+
+CREATE TABLE IF NOT EXISTS pitch_label (
+    game_pk INTEGER NOT NULL,
+    play_id TEXT NOT NULL,
+    ab_index INTEGER,
+    pitch_number INTEGER,
+    inning INTEGER,
+    top_inning INTEGER,                 -- 1=top, 0=bottom
+    batter_id INTEGER,
+    pitcher_id INTEGER,
+    batter_side TEXT,                   -- 'L' | 'R'
+    pitcher_throws TEXT,                -- 'L' | 'R'
+    balls_before INTEGER,
+    strikes_before INTEGER,
+    outs_before INTEGER,
+    pitch_type TEXT,                    -- 'FF', 'SL', etc. (statsapi details.type.code)
+    pitch_type_desc TEXT,
+    start_speed REAL,                   -- mph at release
+    end_speed REAL,                     -- mph at plate
+    spin_rate REAL,
+    spin_direction REAL,
+    release_x REAL, release_y REAL, release_z REAL,
+    release_extension REAL,
+    plate_x REAL, plate_z REAL,
+    sz_top REAL, sz_bot REAL,
+    result_call TEXT,                   -- 'B' | 'S' | 'X'
+    result_desc TEXT,
+    is_in_play INTEGER,
+    is_strike INTEGER,
+    is_ball INTEGER,
+    start_time TEXT,                    -- ISO from statsapi
+    end_time TEXT,
+    start_time_unix REAL,
+    end_time_unix REAL,
+    PRIMARY KEY (game_pk, play_id)
+);
+CREATE INDEX IF NOT EXISTS idx_pl_pitcher ON pitch_label(pitcher_id);
+CREATE INDEX IF NOT EXISTS idx_pl_batter  ON pitch_label(batter_id);
+CREATE INDEX IF NOT EXISTS idx_pl_type    ON pitch_label(pitch_type);
+CREATE INDEX IF NOT EXISTS idx_pl_time    ON pitch_label(start_time_unix);
 """
 
 
@@ -301,6 +343,39 @@ def load_lookup_tables(
     return labels_dict
 
 
+def _pitch_event_insert_sql() -> str:
+    cols = [
+        "game_pk", "segment_idx", "frame_num", "time_unix",
+        "event_type", "play_id",
+        "pos_x", "pos_y", "pos_z",
+    ]
+    placeholders = ", ".join("?" * len(cols))
+    return f"INSERT INTO pitch_event ({', '.join(cols)}) VALUES ({placeholders})"
+
+
+def _pitch_label_insert_sql() -> str:
+    cols = [
+        "game_pk", "play_id",
+        "ab_index", "pitch_number",
+        "inning", "top_inning",
+        "batter_id", "pitcher_id",
+        "batter_side", "pitcher_throws",
+        "balls_before", "strikes_before", "outs_before",
+        "pitch_type", "pitch_type_desc",
+        "start_speed", "end_speed",
+        "spin_rate", "spin_direction",
+        "release_x", "release_y", "release_z", "release_extension",
+        "plate_x", "plate_z",
+        "sz_top", "sz_bot",
+        "result_call", "result_desc",
+        "is_in_play", "is_strike", "is_ball",
+        "start_time", "end_time",
+        "start_time_unix", "end_time_unix",
+    ]
+    placeholders = ", ".join("?" * len(cols))
+    return f"INSERT OR REPLACE INTO pitch_label ({', '.join(cols)}) VALUES ({placeholders})"
+
+
 def ingest_segment(
     conn: sqlite3.Connection,
     game_pk: int,
@@ -308,6 +383,7 @@ def ingest_segment(
     bin_path: Path,
     labels_dict: dict[int, dict],
     insert_sql: str,
+    pitch_event_insert_sql: str | None = None,
 ) -> tuple[int, int]:
     """Decode one .bin segment and insert all actor-frames + ball-frames + bat-frames.
     Returns (n_actor_rows_inserted, n_ball_rows_inserted)."""
@@ -315,6 +391,7 @@ def ingest_segment(
     actor_rows: list[tuple] = []
     ball_rows: list[tuple] = []
     bat_rows: list[tuple] = []
+    pitch_event_rows: list[tuple] = []
 
     for f in td.frames:
         # Per-frame metadata
@@ -340,6 +417,20 @@ def ingest_segment(
                 handle.x, handle.y, handle.z,
             ))
 
+        # Pitch segmentation markers — gameEvents (PlayEvent → play_id) and trackedEvents
+        for ge in f.gameEvents:
+            if ge.dataType == 7 and ge.playId:  # PlayEvent
+                pitch_event_rows.append((
+                    game_pk, segment_idx, f.num, time_unix,
+                    "PLAY_EVENT", ge.playId, None, None, None,
+                ))
+        for te in f.trackedEvents:
+            if te.eventType:
+                pitch_event_rows.append((
+                    game_pk, segment_idx, f.num, time_unix,
+                    te.eventType, None, te.x, te.y, te.z,
+                ))
+
         # Actor poses
         for a in f.actorPoses:
             if a.rootPos is None:
@@ -361,6 +452,10 @@ def ingest_segment(
                 a.uid, atype, mlb_id, a.scale, a.ground, a.apex,
                 world_pos, bat,
             ))
+
+    pe_sql = pitch_event_insert_sql or _pitch_event_insert_sql()
+    if pitch_event_rows:
+        conn.executemany(pe_sql, pitch_event_rows)
 
     if actor_rows:
         conn.executemany(insert_sql, actor_rows)
