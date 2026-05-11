@@ -383,6 +383,7 @@ def ingest_segment(
     bin_path: Path,
     labels_dict: dict[int, dict],
     insert_sql: str,
+    pitch_event_insert_sql: str | None = None,
 ) -> tuple[int, int]:
     """Decode one .bin segment and insert all actor-frames + ball-frames + bat-frames.
     Returns (n_actor_rows_inserted, n_ball_rows_inserted)."""
@@ -390,6 +391,7 @@ def ingest_segment(
     actor_rows: list[tuple] = []
     ball_rows: list[tuple] = []
     bat_rows: list[tuple] = []
+    pitch_event_rows: list[tuple] = []
 
     for f in td.frames:
         # Per-frame metadata
@@ -415,6 +417,20 @@ def ingest_segment(
                 handle.x, handle.y, handle.z,
             ))
 
+        # Pitch segmentation markers — gameEvents (PlayEvent → play_id) and trackedEvents
+        for ge in f.gameEvents:
+            if ge.dataType == 7 and ge.playId:  # PlayEvent
+                pitch_event_rows.append((
+                    game_pk, segment_idx, f.num, time_unix,
+                    "PLAY_EVENT", ge.playId, None, None, None,
+                ))
+        for te in f.trackedEvents:
+            if te.eventType:
+                pitch_event_rows.append((
+                    game_pk, segment_idx, f.num, time_unix,
+                    te.eventType, None, te.x, te.y, te.z,
+                ))
+
         # Actor poses
         for a in f.actorPoses:
             if a.rootPos is None:
@@ -436,6 +452,10 @@ def ingest_segment(
                 a.uid, atype, mlb_id, a.scale, a.ground, a.apex,
                 world_pos, bat,
             ))
+
+    pe_sql = pitch_event_insert_sql or _pitch_event_insert_sql()
+    if pitch_event_rows:
+        conn.executemany(pe_sql, pitch_event_rows)
 
     if actor_rows:
         conn.executemany(insert_sql, actor_rows)

@@ -14,8 +14,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from fieldvision.storage import (_actor_frame_insert_sql, ingest_segment,
-                                 load_lookup_tables, open_game_db,
+from fieldvision.storage import (_actor_frame_insert_sql, _pitch_event_insert_sql,
+                                 ingest_segment, load_lookup_tables, open_game_db,
                                  open_registry, transaction, update_registry)
 
 
@@ -51,7 +51,8 @@ def main():
     if args.rebuild:
         print("  dropping existing tables...")
         with transaction(conn):
-            for table in ("actor_frame", "ball_frame", "game_event",
+            for table in ("actor_frame", "ball_frame", "bat_frame",
+                          "pitch_event",
                           "labels", "bones", "players", "meta"):
                 conn.execute(f"DELETE FROM {table}")
 
@@ -61,6 +62,7 @@ def main():
 
     print(f"\nIngesting {len(bin_paths)} segments...")
     insert_sql = _actor_frame_insert_sql()
+    pe_sql = _pitch_event_insert_sql()
 
     t0 = time.monotonic()
     total_actor_rows = 0
@@ -70,7 +72,8 @@ def main():
         seg_idx = int(bin_path.stem.split("_")[-1])
         with transaction(conn):
             n_actor, n_ball = ingest_segment(conn, args.game, seg_idx,
-                                             bin_path, labels_dict, insert_sql)
+                                             bin_path, labels_dict, insert_sql,
+                                             pitch_event_insert_sql=pe_sql)
         total_actor_rows += n_actor
         total_ball_rows += n_ball
         now = time.monotonic()
