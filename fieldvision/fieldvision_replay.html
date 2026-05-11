@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MLB FieldVision Skeletal Replay</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@400;600;700&display=swap');
+  
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    background: #0a0a0f;
+    color: #e0e0e0;
+    font-family: 'JetBrains Mono', monospace;
+    overflow: hidden;
+    height: 100vh;
+  }
+  
+  #canvas-container {
+    width: 100%;
+    height: 100vh;
+    position: relative;
+  }
+  
+  canvas { display: block; }
+  
+  #overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.8) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 10;
+  }
+  
+  #overlay > * { pointer-events: all; }
+  
+  .title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: #00ff88;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+  
+  .stats {
+    font-size: 11px;
+    color: #888;
+  }
+  
+  .stats span { color: #00ff88; }
+  
+  #controls {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    padding: 12px 20px 16px;
+    background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, transparent 100%);
+    z-index: 10;
+  }
+  
+  #timeline {
+    width: 100%;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #222;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    margin-bottom: 10px;
+  }
+  
+  #timeline::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    background: #00ff88;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(0,255,136,0.5);
+  }
+  
+  .controls-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  button {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: #e0e0e0;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 11px;
+    transition: all 0.15s;
+  }
+  
+  button:hover { background: rgba(0,255,136,0.15); border-color: #00ff88; color: #00ff88; }
+  button.active { background: rgba(0,255,136,0.2); border-color: #00ff88; color: #00ff88; }
+  
+  .frame-info {
+    font-size: 11px;
+    color: #666;
+    margin-left: auto;
+  }
+  .frame-info span { color: #00ff88; }
+  
+  #upload-screen {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #0a0a0f;
+    z-index: 100;
+  }
+  
+  #upload-screen h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 28px;
+    font-weight: 700;
+    color: #00ff88;
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+  }
+  
+  #upload-screen p {
+    color: #555;
+    font-size: 12px;
+    margin-bottom: 30px;
+  }
+  
+  .upload-zone {
+    width: 400px;
+    height: 180px;
+    border: 2px dashed rgba(0,255,136,0.3);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+  }
+  
+  .upload-zone:hover {
+    border-color: #00ff88;
+    background: rgba(0,255,136,0.03);
+  }
+  
+  .upload-zone input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+  
+  .upload-icon { font-size: 36px; margin-bottom: 10px; }
+  .upload-text { font-size: 13px; color: #888; }
+  .upload-hint { font-size: 10px; color: #444; margin-top: 8px; }
+  
+  #loading {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.8);
+    z-index: 200;
+    font-size: 14px;
+    color: #00ff88;
+  }
+  
+  .camera-btn {
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+</style>
+</head>
+<body>
+
+<div id="upload-screen">
+  <h1>⚾ FIELDVISION REPLAY</h1>
+  <p>MLB Hawk-Eye Skeletal Tracking Viewer</p>
+  <div class="upload-zone" id="dropzone">
+    <div class="upload-icon">📂</div>
+    <div class="upload-text">Drop bone_capture JSON here</div>
+    <div class="upload-hint">or click to browse</div>
+    <input type="file" id="file-input" accept=".json">
+  </div>
+</div>
+
+<div id="loading">Loading skeletal data...</div>
+
+<div id="canvas-container">
+  <div id="overlay">
+    <div class="title">⚾ FieldVision Replay</div>
+    <div class="stats">
+      Players: <span id="stat-players">-</span> &nbsp;|&nbsp;
+      Bones: <span id="stat-bones">-</span> &nbsp;|&nbsp;
+      FPS: <span id="stat-fps">-</span>
+    </div>
+  </div>
+  
+  <div id="controls">
+    <input type="range" id="timeline" min="0" max="100" value="0">
+    <div class="controls-row">
+      <button id="btn-play">▶ Play</button>
+      <button id="btn-speed" data-speed="1">1x</button>
+      <button class="camera-btn" id="btn-cam-top">Top</button>
+      <button class="camera-btn" id="btn-cam-behind">Behind</button>
+      <button class="camera-btn" id="btn-cam-side">1B Side</button>
+      <button class="camera-btn" id="btn-cam-pitcher">Mound</button>
+      <div class="frame-info">
+        Frame <span id="frame-num">0</span> / <span id="frame-total">0</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  // ═══════════════════════════════════════════════
+  // BONE CONNECTIONS (parent → child)
+  // ═══════════════════════════════════════════════
+  const BONE_CONNECTIONS = [
+    // Spine
+    [0, 18], [18, 19], [19, 20], [20, 22],
+    // Right leg
+    [0, 2], [2, 3], [3, 4],
+    // Left leg
+    [0, 10], [10, 11], [11, 12],
+    // Right arm
+    [19, 26], [26, 27], [27, 28],
+    // Left arm
+    [19, 65], [65, 66], [66, 67],
+  ];
+
+  // Extra connections for detailed view
+  const DETAIL_CONNECTIONS = [
+    [4, 6], [12, 14],     // Feet to toes
+    [28, 29], [67, 68],   // Hands to weapons
+    [20, 21], [21, 22],   // Neck detail
+    [19, 25], [25, 26],   // Clavicle RT
+    [19, 64], [64, 65],   // Clavicle LT
+  ];
+
+  const PLAYER_COLORS = [
+    0x00ff88, 0xff6644, 0x44aaff, 0xffcc00, 0xff44aa,
+    0x44ffcc, 0xaa44ff, 0xff8844, 0x88ff44, 0x4488ff,
+    0xff4444, 0x44ff44, 0x4444ff, 0xffff44, 0xff44ff,
+    0x44ffff, 0xffffff, 0xaaaaaa
+  ];
+
+  let scene, camera, renderer;
+  let frames = [];
+  let currentFrame = 0;
+  let playing = false;
+  let playSpeed = 1;
+  let playerMeshes = [];
+  let jointSpheres = [];
+  let isDragging = false;
+  let prevMouse = { x: 0, y: 0 };
+  let cameraOrbit = { theta: Math.PI * 0.75, phi: Math.PI * 0.35, radius: 400, target: new THREE.Vector3(0, 0, -130) };
+
+  // ═══════════════════════════════════════════════
+  // INIT THREE.JS
+  // ═══════════════════════════════════════════════
+  function initScene() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0f);
+    scene.fog = new THREE.Fog(0x0a0a0f, 500, 900);
+
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
+    updateCameraFromOrbit();
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    document.getElementById('canvas-container').prepend(renderer.domElement);
+
+    // Lighting
+    const ambient = new THREE.AmbientLight(0x334455, 0.6);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(100, 200, 50);
+    scene.add(dirLight);
+    const hemiLight = new THREE.HemisphereLight(0x88ccff, 0x224422, 0.3);
+    scene.add(hemiLight);
+
+    buildField();
+
+    // Mouse controls
+    const cvs = renderer.domElement;
+    cvs.addEventListener('mousedown', e => { isDragging = true; prevMouse = { x: e.clientX, y: e.clientY }; });
+    cvs.addEventListener('mousemove', e => {
+      if (!isDragging) return;
+      const dx = e.clientX - prevMouse.x;
+      const dy = e.clientY - prevMouse.y;
+      cameraOrbit.theta -= dx * 0.005;
+      cameraOrbit.phi = Math.max(0.1, Math.min(Math.PI * 0.49, cameraOrbit.phi - dy * 0.005));
+      prevMouse = { x: e.clientX, y: e.clientY };
+      updateCameraFromOrbit();
+    });
+    cvs.addEventListener('mouseup', () => isDragging = false);
+    cvs.addEventListener('mouseleave', () => isDragging = false);
+    cvs.addEventListener('wheel', e => {
+      cameraOrbit.radius = Math.max(50, Math.min(1000, cameraOrbit.radius + e.deltaY * 0.5));
+      updateCameraFromOrbit();
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  }
+
+  function updateCameraFromOrbit() {
+    const { theta, phi, radius, target } = cameraOrbit;
+    camera.position.set(
+      target.x + radius * Math.sin(phi) * Math.cos(theta),
+      target.y + radius * Math.cos(phi),
+      target.z + radius * Math.sin(phi) * Math.sin(theta)
+    );
+    camera.lookAt(target);
+  }
+
+  // ═══════════════════════════════════════════════
+  // BUILD BASEBALL FIELD
+  // ═══════════════════════════════════════════════
+  function buildField() {
+    // Ground plane
+    const groundGeo = new THREE.PlaneGeometry(800, 800);
+    const groundMat = new THREE.MeshPhongMaterial({ color: 0x1a3d1a, side: THREE.DoubleSide });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0;
+    ground.position.z = -200;
+    scene.add(ground);
+
+    // Infield dirt
+    const dirtGeo = new THREE.CircleGeometry(95, 32);
+    const dirtMat = new THREE.MeshPhongMaterial({ color: 0x3d2b1a, side: THREE.DoubleSide });
+    const dirt = new THREE.Mesh(dirtGeo, dirtMat);
+    dirt.rotation.x = -Math.PI / 2;
+    dirt.position.set(0, 0.1, -90);
+    scene.add(dirt);
+
+    // Diamond lines
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.5, transparent: true });
+    
+    // Base positions (approximate feet from home plate)
+    const home = new THREE.Vector3(0, 0.2, 0);
+    const first = new THREE.Vector3(63.6, 0.2, -63.6);
+    const second = new THREE.Vector3(0, 0.2, -127.3);
+    const third = new THREE.Vector3(-63.6, 0.2, -63.6);
+    
+    const diamondGeo = new THREE.BufferGeometry().setFromPoints([home, first, second, third, home]);
+    scene.add(new THREE.Line(diamondGeo, lineMat));
+
+    // Pitcher's mound
+    const moundGeo = new THREE.CircleGeometry(5, 16);
+    const moundMat = new THREE.MeshPhongMaterial({ color: 0x5a3d1a, side: THREE.DoubleSide });
+    const mound = new THREE.Mesh(moundGeo, moundMat);
+    mound.rotation.x = -Math.PI / 2;
+    mound.position.set(0, 0.3, -60.5);
+    scene.add(mound);
+
+    // Bases
+    const baseMat = new THREE.MeshPhongMaterial({ color: 0xffffff, emissive: 0x222222 });
+    [first, second, third].forEach(pos => {
+      const base = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.3, 1.25), baseMat);
+      base.position.copy(pos);
+      scene.add(base);
+    });
+
+    // Home plate
+    const homeMat = new THREE.MeshPhongMaterial({ color: 0xffffff, emissive: 0x333333 });
+    const homePlate = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.2, 1.4), homeMat);
+    homePlate.position.copy(home);
+    scene.add(homePlate);
+
+    // Foul lines (extended)
+    const foulMat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.3, transparent: true });
+    const foulR = new THREE.BufferGeometry().setFromPoints([home, new THREE.Vector3(250, 0.2, -250)]);
+    const foulL = new THREE.BufferGeometry().setFromPoints([home, new THREE.Vector3(-250, 0.2, -250)]);
+    scene.add(new THREE.Line(foulR, foulMat));
+    scene.add(new THREE.Line(foulL, foulMat));
+
+    // Outfield arc
+    const arcPoints = [];
+    for (let a = -Math.PI / 4; a <= Math.PI / 4; a += 0.05) {
+      arcPoints.push(new THREE.Vector3(Math.sin(a) * 330, 0.2, -Math.cos(a) * 330));
+    }
+    const arcGeo = new THREE.BufferGeometry().setFromPoints(arcPoints);
+    const arcMat = new THREE.LineBasicMaterial({ color: 0x335533, opacity: 0.4, transparent: true });
+    scene.add(new THREE.Line(arcGeo, arcMat));
+
+    // Grid lines for reference
+    const gridMat = new THREE.LineBasicMaterial({ color: 0x111a11, opacity: 0.3, transparent: true });
+    for (let i = -400; i <= 400; i += 50) {
+      const hGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-400, 0.05, i), new THREE.Vector3(400, 0.05, i)
+      ]);
+      const vGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(i, 0.05, -400), new THREE.Vector3(i, 0.05, 400)
+      ]);
+      scene.add(new THREE.Line(hGeo, gridMat));
+      scene.add(new THREE.Line(vGeo, gridMat));
+    }
+  }
+
+  // ═══════════════════════════════════════════════
+  // PLAYER SKELETON RENDERING
+  // ═══════════════════════════════════════════════
+  function createPlayerMeshes(numPlayers) {
+    // Clear existing
+    playerMeshes.forEach(pm => scene.remove(pm.group));
+    jointSpheres = [];
+    playerMeshes = [];
+
+    for (let i = 0; i < numPlayers; i++) {
+      const color = PLAYER_COLORS[i % PLAYER_COLORS.length];
+      const group = new THREE.Group();
+
+      // Bone lines
+      const connections = [...BONE_CONNECTIONS, ...DETAIL_CONNECTIONS];
+      const lineMat = new THREE.LineBasicMaterial({ color, linewidth: 2, opacity: 0.9, transparent: true });
+      const lines = [];
+
+      connections.forEach(() => {
+        const geo = new THREE.BufferGeometry();
+        const positions = new Float32Array(6); // 2 points × 3 coords
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const line = new THREE.Line(geo, lineMat);
+        lines.push(line);
+        group.add(line);
+      });
+
+      // Joint spheres for key joints
+      const sphereMat = new THREE.MeshPhongMaterial({ color, emissive: color, emissiveIntensity: 0.3 });
+      const spheres = {};
+      [0, 22, 28, 67, 4, 12, 26, 65].forEach(boneId => {
+        const sphere = new THREE.Mesh(
+          new THREE.SphereGeometry(boneId === 22 ? 0.6 : 0.35, 8, 8),
+          sphereMat
+        );
+        spheres[boneId] = sphere;
+        group.add(sphere);
+      });
+
+      scene.add(group);
+      playerMeshes.push({ group, lines, spheres, color });
+    }
+  }
+
+  function updatePlayerMeshes(frameData) {
+    if (!frameData || !frameData.p) return;
+
+    const connections = [...BONE_CONNECTIONS, ...DETAIL_CONNECTIONS];
+
+    frameData.p.forEach((player, pidx) => {
+      if (pidx >= playerMeshes.length) return;
+      const pm = playerMeshes[pidx];
+      pm.group.visible = player.v !== false;
+
+      if (!pm.group.visible) return;
+
+      const joints = player.j || player.bonePositions || {};
+
+      // Update bone lines
+      connections.forEach((conn, cidx) => {
+        if (cidx >= pm.lines.length) return;
+        const line = pm.lines[cidx];
+        const p1 = joints[conn[0]] || joints[String(conn[0])];
+        const p2 = joints[conn[1]] || joints[String(conn[1])];
+
+        if (p1 && p2) {
+          const pos = line.geometry.attributes.position.array;
+          pos[0] = p1[0]; pos[1] = p1[1]; pos[2] = p1[2];
+          pos[3] = p2[0]; pos[4] = p2[1]; pos[5] = p2[2];
+          line.geometry.attributes.position.needsUpdate = true;
+          line.visible = true;
+        } else {
+          line.visible = false;
+        }
+      });
+
+      // Update joint spheres
+      Object.entries(pm.spheres).forEach(([boneId, sphere]) => {
+        const pos = joints[boneId] || joints[String(boneId)];
+        if (pos) {
+          sphere.position.set(pos[0], pos[1], pos[2]);
+          sphere.visible = true;
+        } else {
+          sphere.visible = false;
+        }
+      });
+    });
+  }
+
+  // ═══════════════════════════════════════════════
+  // DATA LOADING
+  // ═══════════════════════════════════════════════
+  function loadData(json) {
+    // Support both compact format {frames: [{t, p: [{v, j}]}]} 
+    // and full format {frames: [{timestamp, players: [{visible, bonePositions}]}]}
+    if (json.frames) {
+      frames = json.frames.map(f => {
+        if (f.p) return f; // Compact format
+        // Full format → convert
+        return {
+          t: f.timestamp,
+          p: (f.players || []).map(p => ({
+            v: p.visible,
+            j: p.bonePositions || {}
+          }))
+        };
+      });
+    }
+
+    if (frames.length === 0) {
+      alert('No frames found in JSON');
+      return;
+    }
+
+    const numPlayers = frames[0].p.length;
+    const numBones = Object.keys(frames[0].p[0].j || {}).length;
+    const duration = frames.length > 1 ? (frames[frames.length-1].t - frames[0].t) / 1000 : 0;
+    const fps = duration > 0 ? (frames.length / duration).toFixed(1) : '?';
+
+    document.getElementById('stat-players').textContent = numPlayers;
+    document.getElementById('stat-bones').textContent = numBones;
+    document.getElementById('stat-fps').textContent = fps;
+    document.getElementById('frame-total').textContent = frames.length;
+    document.getElementById('timeline').max = frames.length - 1;
+
+    createPlayerMeshes(numPlayers);
+    updatePlayerMeshes(frames[0]);
+    
+    // Auto-center camera on the action
+    const pelvisPositions = frames[0].p
+      .filter(p => p.v !== false && p.j && (p.j[0] || p.j['0']))
+      .map(p => p.j[0] || p.j['0']);
+    
+    if (pelvisPositions.length > 0) {
+      const avgX = pelvisPositions.reduce((a, p) => a + p[0], 0) / pelvisPositions.length;
+      const avgZ = pelvisPositions.reduce((a, p) => a + p[2], 0) / pelvisPositions.length;
+      cameraOrbit.target.set(avgX, 3, avgZ);
+      updateCameraFromOrbit();
+    }
+
+    document.getElementById('upload-screen').style.display = 'none';
+  }
+
+  // ═══════════════════════════════════════════════
+  // ANIMATION LOOP
+  // ═══════════════════════════════════════════════
+  let lastTime = 0;
+  let accumulator = 0;
+  const frameDuration = 1000 / 30; // 30fps
+
+  function animate(time) {
+    requestAnimationFrame(animate);
+
+    if (playing && frames.length > 0) {
+      const dt = time - lastTime;
+      accumulator += dt * playSpeed;
+
+      while (accumulator >= frameDuration) {
+        accumulator -= frameDuration;
+        currentFrame++;
+        if (currentFrame >= frames.length) {
+          currentFrame = 0;
+        }
+      }
+
+      updatePlayerMeshes(frames[currentFrame]);
+      document.getElementById('timeline').value = currentFrame;
+      document.getElementById('frame-num').textContent = currentFrame;
+    }
+
+    lastTime = time;
+    renderer.render(scene, camera);
+  }
+
+  // ═══════════════════════════════════════════════
+  // UI CONTROLS
+  // ═══════════════════════════════════════════════
+  function setupControls() {
+    document.getElementById('btn-play').addEventListener('click', function() {
+      playing = !playing;
+      this.textContent = playing ? '⏸ Pause' : '▶ Play';
+      this.classList.toggle('active', playing);
+    });
+
+    document.getElementById('btn-speed').addEventListener('click', function() {
+      const speeds = [0.25, 0.5, 1, 2, 4];
+      const current = parseFloat(this.dataset.speed);
+      const next = speeds[(speeds.indexOf(current) + 1) % speeds.length];
+      this.dataset.speed = next;
+      playSpeed = next;
+      this.textContent = next + 'x';
+    });
+
+    document.getElementById('timeline').addEventListener('input', function() {
+      currentFrame = parseInt(this.value);
+      if (frames[currentFrame]) {
+        updatePlayerMeshes(frames[currentFrame]);
+        document.getElementById('frame-num').textContent = currentFrame;
+      }
+    });
+
+    // Camera presets
+    document.getElementById('btn-cam-top').addEventListener('click', () => {
+      cameraOrbit.theta = 0; cameraOrbit.phi = 0.15; cameraOrbit.radius = 500;
+      cameraOrbit.target.set(0, 0, -130);
+      updateCameraFromOrbit();
+    });
+
+    document.getElementById('btn-cam-behind').addEventListener('click', () => {
+      cameraOrbit.theta = Math.PI; cameraOrbit.phi = 0.4; cameraOrbit.radius = 120;
+      cameraOrbit.target.set(0, 3, -30);
+      updateCameraFromOrbit();
+    });
+
+    document.getElementById('btn-cam-side').addEventListener('click', () => {
+      cameraOrbit.theta = Math.PI / 2; cameraOrbit.phi = 0.35; cameraOrbit.radius = 300;
+      cameraOrbit.target.set(0, 0, -100);
+      updateCameraFromOrbit();
+    });
+
+    document.getElementById('btn-cam-pitcher').addEventListener('click', () => {
+      cameraOrbit.theta = 0; cameraOrbit.phi = 0.45; cameraOrbit.radius = 80;
+      cameraOrbit.target.set(0, 3, -60);
+      updateCameraFromOrbit();
+    });
+
+    // File upload
+    const fileInput = document.getElementById('file-input');
+    const dropzone = document.getElementById('dropzone');
+
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) loadFile(file);
+    });
+
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = '#00ff88'; });
+    dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = 'rgba(0,255,136,0.3)'; });
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.style.borderColor = 'rgba(0,255,136,0.3)';
+      const file = e.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
+  }
+
+  function loadFile(file) {
+    document.getElementById('loading').style.display = 'flex';
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const json = JSON.parse(e.target.result);
+        loadData(json);
+      } catch (err) {
+        alert('Failed to parse JSON: ' + err.message);
+      }
+      document.getElementById('loading').style.display = 'none';
+    };
+    reader.readAsText(file);
+  }
+
+  // ═══════════════════════════════════════════════
+  // INIT
+  // ═══════════════════════════════════════════════
+  initScene();
+  setupControls();
+  requestAnimationFrame(animate);
+
+})();
+</script>
+</body>
+</html>

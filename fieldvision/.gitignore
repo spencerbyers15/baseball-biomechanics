@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# venv
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Project — captured data is large and recreatable
+captures/
+fv_captures/
+state/
+*.jsonl
+*.bin
+
+# Project — local databases (per-game capture DBs and registry)
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.duckdb
+*.duckdb.wal
+
+# Diagnostic outputs (raw inspection dumps; reports under docs/ are tracked)
+diagnostics/raw/
+
+# Logs
+*.log
+scheduler.log
+scheduler.err
+
+# Daemon state (per-game last-segment markers, not interesting to commit)
+state/
+
+# Persistent Playwright profile holding logged-in MLB session cookies — never commit
+.mlb_profile/
+
+# Bearer token files — never commit
+.fv_token.txt
+.fv_token*
+
+# SQLite + DuckDB stores (multi-GB, derivative of ToS-sensitive source)
+data/
+
+# Captures of binary mannequin segments (potentially large + ToS-sensitive)
+samples/binary_capture_*/
+
+# HLS video samples (large + ToS-sensitive, not part of the joint-data path)
+samples/dfv_*.mp4
+samples/dfv_*.png
+
+# Rendered visualizations of decoded data (derivative of ToS-sensitive source)
+samples/decoded_*.mp4
+samples/decoded_*.png
+
+# MLB's JS bundles cached locally for schema reverse-engineering
+# (publicly fetchable; not our code, don't commit)
+samples/mlb_bundles/
+.claude/settings.local.json
