@@ -225,52 +225,52 @@ def scrape_game_once(game_pk: int, token: str) -> dict:
         if s == 200:
             labels_path.write_bytes(b)
 
+    from fieldvision.storage_parquet import (
+        ParquetGameStore, ingest_segment_parquet, max_segment_idx_for_game,
+    )
+
     n_segments = len(manifest.get("records", []))
-    last_seg = get_last_segment(game_pk)
+    # Resume: use the higher of (state file's last_segment, max segment in
+    # Parquet). The state file is updated even on 404 segments; the Parquet
+    # max reflects only successful ingests.
+    last_seg = max(get_last_segment(game_pk),
+                   max_segment_idx_for_game(DATA_DIR, game_pk))
     new_indices = [i for i in range(last_seg + 1, n_segments)]
     if not new_indices:
         return {"ok": True, "new": 0, "manifest_status": manifest.get("status"),
                 "total": n_segments}
 
-    conn = open_game_db(game_pk, DATA_DIR)
-    cur = conn.execute("SELECT COUNT(*) FROM labels")
-    if cur.fetchone()[0] == 0:
-        labels_dict = load_lookup_tables(conn, metadata_path, labels_path)
-    else:
-        labels_dict = {row[0]: {"actor": row[1], "type": row[2]}
-                       for row in conn.execute("SELECT actor_uid, actor, actor_type FROM labels")}
-    insert_sql = _actor_frame_insert_sql()
-    pe_sql = _pitch_event_insert_sql()
+    # Open Parquet store and write lookups (idempotent — overwrites)
+    store = ParquetGameStore(game_pk, DATA_DIR)
+    metadata = json.loads(metadata_path.read_text())
+    labels = json.loads(labels_path.read_text())
+    labels_dict = store.write_lookups_from_metadata(metadata, labels)
 
     fetched = 0
     auth_failed = False
-    for i in new_indices:
-        s, b = http_get(f"{base}/{i}.bin", token)
-        if s == 401:
-            auth_failed = True
-            break
-        if s == 404:
-            set_last_segment(game_pk, i)
-            continue
-        if s != 200:
-            err(f"  game {game_pk} segment {i}: HTTP {s}")
-            break
-        bin_path = out_dir / f"mlb_{game_pk}_segment_{i}.bin"
-        bin_path.write_bytes(b)
-        try:
-            with transaction(conn):
-                ingest_segment(conn, game_pk, i, bin_path, labels_dict,
-                               insert_sql, pitch_event_insert_sql=pe_sql)
-            set_last_segment(game_pk, i)
-            fetched += 1
-        except Exception as e:
-            err(f"  ingest segment {i} for game {game_pk}: {e}")
-        time.sleep(0.3)
-
-    reg = open_registry(DATA_DIR)
-    update_registry(reg, conn, game_pk, DATA_DIR / f"fv_{game_pk}.sqlite")
-    reg.close()
-    conn.close()
+    try:
+        for i in new_indices:
+            s, b = http_get(f"{base}/{i}.bin", token)
+            if s == 401:
+                auth_failed = True
+                break
+            if s == 404:
+                set_last_segment(game_pk, i)
+                continue
+            if s != 200:
+                err(f"  game {game_pk} segment {i}: HTTP {s}")
+                break
+            bin_path = out_dir / f"mlb_{game_pk}_segment_{i}.bin"
+            bin_path.write_bytes(b)
+            try:
+                ingest_segment_parquet(store, game_pk, i, bin_path, labels_dict)
+                set_last_segment(game_pk, i)
+                fetched += 1
+            except Exception as e:
+                err(f"  ingest segment {i} for game {game_pk}: {e}")
+            time.sleep(0.3)
+    finally:
+        store.finalize()
 
     return {"ok": True, "auth_failed": auth_failed, "new": fetched,
             "manifest_status": manifest.get("status"), "total": n_segments}
