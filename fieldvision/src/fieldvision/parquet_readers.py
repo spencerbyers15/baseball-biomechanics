@@ -56,6 +56,19 @@ def game_dir(game_pk: int, data_dir: Path | None = None) -> Path:
     return (data_dir or _default_data_dir()) / str(game_pk)
 
 
+def _parquet_finalized(p: Path) -> bool:
+    """Cheap check that a Parquet file has its footer (trailing PAR1 magic).
+    In-flight files written by ParquetWriter only get the footer at close()."""
+    try:
+        if p.stat().st_size < 8:
+            return False
+        with p.open("rb") as f:
+            f.seek(-4, 2)
+            return f.read(4) == b"PAR1"
+    except OSError:
+        return False
+
+
 def open_game(game_pk: int, data_dir: Path | None = None) -> duckdb.DuckDBPyConnection:
     """Return a DuckDB connection with views for every Parquet file the
     game has on disk. Missing tables (e.g. a game without `pitch_label`
@@ -72,15 +85,11 @@ def open_game(game_pk: int, data_dir: Path | None = None) -> duckdb.DuckDBPyConn
     con = duckdb.connect()
     for table, fname in _TABLE_TO_FILE.items():
         p = gdir / f"{fname}.parquet"
-        if not p.exists():
+        if not p.exists() or not _parquet_finalized(p):
             continue
-        try:
-            con.execute(
-                f"CREATE VIEW {table} AS SELECT * FROM read_parquet('{p.as_posix()}')"
-            )
-        except duckdb.IOException:
-            # Empty / not-yet-finalized parquet — skip this table for now.
-            continue
+        con.execute(
+            f"CREATE VIEW {table} AS SELECT * FROM read_parquet('{p.as_posix()}')"
+        )
     return con
 
 
