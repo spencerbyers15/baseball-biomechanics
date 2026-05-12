@@ -190,7 +190,7 @@ def scrape_one_game(pk: int, token: str, delete_bins: bool) -> dict:
                 rate = fetched / max(elapsed, 0.1)
                 eta = (len(new_indices) - fetched) / max(rate, 0.1)
                 log(f"    {fetched}/{len(new_indices)}  ({rate:.1f} seg/s, eta {eta:.0f}s)")
-            time.sleep(0.3)
+            time.sleep(float(os.environ.get("FV_SLEEP", "0.1")))
     finally:
         store.finalize()
 
