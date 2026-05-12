@@ -149,9 +149,11 @@ def main():
 
     log("")
     log(f"=== starting bulk download with {args.workers} workers ===")
-    # Sort by date descending so we get the freshest games first (in case
-    # the run is interrupted, recent data is more valuable)
-    available.sort(key=lambda g: g["date"], reverse=True)
+    # Sort by date ascending — oldest first. MLB's fieldvision-hls retains
+    # games for ~3-4 weeks, so games near the start of the window are the
+    # ones at risk of falling off the cliff. Newer games are safe even if
+    # the run is interrupted.
+    available.sort(key=lambda g: g["date"])
 
     completed = 0
     failed = 0
