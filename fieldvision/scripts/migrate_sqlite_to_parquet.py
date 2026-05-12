@@ -69,9 +69,12 @@ def migrate_one(sqlite_path: Path, parquet_dir: Path,
         con.execute("INSTALL sqlite_scanner; LOAD sqlite_scanner;")
         con.execute(f"ATTACH '{sqlite_path.as_posix()}' AS src (TYPE SQLITE, READ_ONLY)")
 
-        # discover tables actually present in this SQLite (old DBs may lack some)
-        existing = {row[0] for row in con.execute(
-            "SELECT name FROM src.sqlite_master WHERE type='table'"
+        # discover tables actually present in this SQLite. The sqlite_scanner
+        # extension exposes them via information_schema once the database is
+        # attached (sqlite_master itself is not surfaced as a virtual table).
+        existing = {row[0].lower() for row in con.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_catalog = 'src'"
         ).fetchall()}
 
         for tbl in TABLES:
