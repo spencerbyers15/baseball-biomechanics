@@ -61,6 +61,10 @@ def open_game(game_pk: int, data_dir: Path | None = None) -> duckdb.DuckDBPyConn
     game has on disk. Missing tables (e.g. a game without `pitch_label`
     yet) are silently skipped — querying them will raise the same
     'table does not exist' error a fresh SQLite would.
+
+    Files that exist but aren't finalized (no Parquet footer — the daemon
+    is still appending) are also skipped silently so a backfill in
+    flight doesn't poison every reader.
     """
     gdir = game_dir(game_pk, data_dir)
     if not gdir.exists():
@@ -68,10 +72,15 @@ def open_game(game_pk: int, data_dir: Path | None = None) -> duckdb.DuckDBPyConn
     con = duckdb.connect()
     for table, fname in _TABLE_TO_FILE.items():
         p = gdir / f"{fname}.parquet"
-        if p.exists():
+        if not p.exists():
+            continue
+        try:
             con.execute(
                 f"CREATE VIEW {table} AS SELECT * FROM read_parquet('{p.as_posix()}')"
             )
+        except duckdb.IOException:
+            # Empty / not-yet-finalized parquet — skip this table for now.
+            continue
     return con
 
 
