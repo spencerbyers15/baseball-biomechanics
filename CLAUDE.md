@@ -1,5 +1,83 @@
 # Claude Code Configuration
 
+## Remote compute: Nellie
+
+We have access to a GPU server called **nellie** (Ubuntu 24.04, 3× GPUs: 2× TITAN RTX
+24GB and 1× A6000 48GB; Python 3.12). It's where the long-running FieldVision
+scraping daemon and heavier analyses are intended to live. Connect requires the
+home VPN.
+
+### Connection
+
+```bash
+ssh nellie                              # via the alias below
+ssh spencer@10.210.1.101                # explicit
+```
+
+The `~/.ssh/config` alias on Spencer's Mac:
+
+```sshconfig
+Host nellie
+    HostName 10.210.1.101
+    User spencer
+    IdentityFile ~/.ssh/id_ed25519
+```
+
+SSH key auth is set up (Mac's `~/.ssh/id_ed25519.pub` is in Nellie's
+`~/.ssh/authorized_keys`). **No password needed**, persists across sessions.
+
+### Filesystem layout on Nellie
+
+- `/` (root partition): 98 GB total, 100% full — DO NOT install large packages here
+- `/media/scratch/spencer/` — NAS share (CIFS at `//10.210.1.247/scratch`, 21 TB free).
+  Mounted `noexec` and lacks POSIX locking, so:
+  - Python venvs and compiled `.so` extensions don't run from there
+  - SQLite writes are unreliable from there (fails with `database is locked`)
+- `/media/datasets`, `/media/models` — same NAS, separate shares (datasets,
+  trained models)
+
+### Repos cloned on Nellie
+
+- `/media/scratch/spencer/baseball-biomechanics/` — this repo, SSH remote
+- `/media/scratch/spencer/JMaps/` — JMaps, SSH remote
+
+Both cloned via `git@github.com:spencerbyers15/<repo>.git` using Nellie's
+SSH key (added to Spencer's GitHub account). `git pull` / `git push` work
+from Nellie without any further authentication.
+
+The `git config --global --add safe.directory '*'` is set on Nellie because
+CIFS mounts files as owned by root rather than the user, which trips up
+git's ownership safety check.
+
+### Auth durability
+
+- **Mac → Nellie SSH**: persists until the key in Nellie's `authorized_keys`
+  is removed or Nellie's filesystem is wiped.
+- **Nellie → GitHub SSH**: persists until the key titled "nellie" is removed
+  from `https://github.com/settings/keys`.
+- Note: Nellie's password was changed from default to a working one on
+  first login; this is independent of key auth and not needed for routine
+  use.
+
+### Open infrastructure problems (Phase 2)
+
+These came up when trying to host the full pipeline (not just the daemon)
+on Nellie:
+
+1. **CIFS noexec** prevents Python venvs from running on `/media/scratch/`.
+   Fix: have Nellie's owner remount the share with `exec` in `/etc/fstab`.
+2. **CIFS lacks POSIX locking** so SQLite fails on the NAS. Fix: remount
+   with `nobrl` (no byte-range locking — SQLite still works since the
+   daemon is the only writer).
+3. **Root partition is 100% full**, blocking `pip install` to `~/.local`
+   even with `--break-system-packages`. Until those mount flags are fixed,
+   Phase 2 (analysis pipeline on Nellie) is blocked.
+
+The Mac currently runs the daemon as a fallback. Migration to Nellie
+becomes trivial once those two CIFS flags are flipped.
+
+See `fieldvision/MIGRATE_TO_NELLY.md` for the full migration plan.
+
 ## Running Python on Windows
 
 1. Use the full path to the conda Python executable:
