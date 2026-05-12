@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-import sqlite3
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -34,6 +34,7 @@ from scipy.signal import butter, filtfilt, hilbert
 from scipy.stats import circmean, circstd
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fieldvision.parquet_readers import open_game
 from fieldvision.skeleton import SKELETON_CONNECTIONS
 from fieldvision.storage import JOINT_COLS
 from fieldvision.pitch_kinematics import detect_pitcher_events
@@ -158,8 +159,8 @@ def load_pitch_data(conn, batter_id, play_id, pitcher_id, release_t):
     }
 
 
-def load_all_pitches(db_path, batter_id):
-    conn = sqlite3.connect(str(db_path))
+def load_all_pitches(game_pk, data_dir, batter_id):
+    conn = open_game(game_pk, data_dir)
     rows = conn.execute(
         "SELECT play_id, pitch_type, result_call, pitcher_id, start_time_unix "
         "FROM pitch_label WHERE batter_id=? AND start_time_unix IS NOT NULL ORDER BY start_time_unix",
@@ -596,13 +597,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", type=int, default=823141)
     ap.add_argument("--batter-id", type=int, required=True)
-    ap.add_argument("--data-dir", default="data")
+    ap.add_argument("--data-dir", default=os.environ.get("FV_DATA_DIR", "data"))
     ap.add_argument("--out-prefix", type=str, default=None,
                     help="prefix for output files (default: data/oscillation_<batter_id>)")
     args = ap.parse_args()
 
-    db_path = Path(args.data_dir) / f"fv_{args.game}.sqlite"
-    pitches = load_all_pitches(db_path, args.batter_id)
+    pitches = load_all_pitches(args.game, Path(args.data_dir), args.batter_id)
     print(f"loaded {len(pitches)} usable pitches for batter {args.batter_id}")
     if not pitches:
         raise SystemExit("no pitches")

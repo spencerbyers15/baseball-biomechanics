@@ -1,4 +1,4 @@
-"""Ingest MLB statsapi feed/live pitch data into pitch_label.
+"""Ingest MLB statsapi feed/live pitch data into pitch_labels.parquet.
 
 Usage:
     python scripts/ingest_pitch_labels.py --game 823141
@@ -8,16 +8,60 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import json
-import sqlite3
+import os
 import sys
 import urllib.request
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.parquet as pq
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from fieldvision.storage import (_pitch_label_insert_sql, open_game_db,
-                                  transaction)
+
+# Column order and types match the legacy SQLite pitch_label table so existing
+# parquet files (migrated via scripts/migrate_sqlite_to_parquet.py) stay
+# schema-compatible.
+_COLUMNS: list[tuple[str, pa.DataType]] = [
+    ("game_pk",         pa.int64()),
+    ("play_id",         pa.string()),
+    ("ab_index",        pa.int64()),
+    ("pitch_number",    pa.int64()),
+    ("inning",          pa.int64()),
+    ("top_inning",      pa.int64()),
+    ("batter_id",       pa.int64()),
+    ("pitcher_id",      pa.int64()),
+    ("batter_side",     pa.string()),
+    ("pitcher_throws",  pa.string()),
+    ("balls_before",    pa.int64()),
+    ("strikes_before",  pa.int64()),
+    ("outs_before",     pa.int64()),
+    ("pitch_type",      pa.string()),
+    ("pitch_type_desc", pa.string()),
+    ("start_speed",     pa.float64()),
+    ("end_speed",       pa.float64()),
+    ("spin_rate",       pa.float64()),
+    ("spin_direction",  pa.float64()),
+    ("release_x",       pa.float64()),
+    ("release_y",       pa.float64()),
+    ("release_z",       pa.float64()),
+    ("release_extension", pa.float64()),
+    ("plate_x",         pa.float64()),
+    ("plate_z",         pa.float64()),
+    ("sz_top",          pa.float64()),
+    ("sz_bot",          pa.float64()),
+    ("result_call",     pa.string()),
+    ("result_desc",     pa.string()),
+    ("is_in_play",      pa.int64()),
+    ("is_strike",       pa.int64()),
+    ("is_ball",         pa.int64()),
+    ("start_time",      pa.string()),
+    ("end_time",        pa.string()),
+    ("start_time_unix", pa.float64()),
+    ("end_time_unix",   pa.float64()),
+]
+_SCHEMA = pa.schema(_COLUMNS)
 
 
 def fetch_feed(game_pk: int) -> dict:
@@ -39,9 +83,7 @@ def _iso_to_unix(iso: str | None) -> float | None:
         return None
 
 
-def ingest_feed_dict(conn: sqlite3.Connection, game_pk: int, feed: dict) -> int:
-    """Insert one pitch_label row per isPitch playEvent. Returns row count."""
-    sql = _pitch_label_insert_sql()
+def feed_to_rows(game_pk: int, feed: dict) -> list[dict]:
     rows = []
     plays = feed.get("liveData", {}).get("plays", {}).get("allPlays", [])
     for play in plays:
@@ -69,49 +111,88 @@ def ingest_feed_dict(conn: sqlite3.Connection, game_pk: int, feed: dict) -> int:
             coords = pdata.get("coordinates", {})
             ptype = details.get("type", {}) or {}
             call = details.get("call", {}) or {}
-
             start_time = ev.get("startTime")
             end_time = ev.get("endTime")
-            rows.append((
-                game_pk, play_id,
-                ab_index, pn,
-                inning, top_inning,
-                batter_id, pitcher_id,
-                batter_side, pitcher_throws,
-                count.get("balls"), count.get("strikes"), count.get("outs"),
-                ptype.get("code"), ptype.get("description"),
-                pdata.get("startSpeed"), pdata.get("endSpeed"),
-                breaks.get("spinRate"), breaks.get("spinDirection"),
-                coords.get("x0"), coords.get("y0"), coords.get("z0"),
-                pdata.get("extension"),
-                coords.get("px"), coords.get("pz"),
-                pdata.get("strikeZoneTop"), pdata.get("strikeZoneBottom"),
-                call.get("code"), details.get("description"),
-                1 if details.get("isInPlay") else 0,
-                1 if details.get("isStrike") else 0,
-                1 if details.get("isBall") else 0,
-                start_time, end_time,
-                _iso_to_unix(start_time), _iso_to_unix(end_time),
-            ))
-    if rows:
-        conn.executemany(sql, rows)
+            rows.append({
+                "game_pk": game_pk,
+                "play_id": play_id,
+                "ab_index": ab_index,
+                "pitch_number": pn,
+                "inning": inning,
+                "top_inning": top_inning,
+                "batter_id": batter_id,
+                "pitcher_id": pitcher_id,
+                "batter_side": batter_side,
+                "pitcher_throws": pitcher_throws,
+                "balls_before": count.get("balls"),
+                "strikes_before": count.get("strikes"),
+                "outs_before": count.get("outs"),
+                "pitch_type": ptype.get("code"),
+                "pitch_type_desc": ptype.get("description"),
+                "start_speed": pdata.get("startSpeed"),
+                "end_speed": pdata.get("endSpeed"),
+                "spin_rate": breaks.get("spinRate"),
+                "spin_direction": breaks.get("spinDirection"),
+                "release_x": coords.get("x0"),
+                "release_y": coords.get("y0"),
+                "release_z": coords.get("z0"),
+                "release_extension": pdata.get("extension"),
+                "plate_x": coords.get("px"),
+                "plate_z": coords.get("pz"),
+                "sz_top": pdata.get("strikeZoneTop"),
+                "sz_bot": pdata.get("strikeZoneBottom"),
+                "result_call": call.get("code"),
+                "result_desc": details.get("description"),
+                "is_in_play": 1 if details.get("isInPlay") else 0,
+                "is_strike": 1 if details.get("isStrike") else 0,
+                "is_ball": 1 if details.get("isBall") else 0,
+                "start_time": start_time,
+                "end_time": end_time,
+                "start_time_unix": _iso_to_unix(start_time),
+                "end_time_unix": _iso_to_unix(end_time),
+            })
+    return rows
+
+
+def write_pitch_labels(game_pk: int, data_dir: Path, rows: list[dict]) -> int:
+    """Idempotent write: merges with any existing pitch_labels.parquet,
+    deduping on (game_pk, play_id) where new rows replace old."""
+    out_dir = data_dir / str(game_pk)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "pitch_labels.parquet"
+
+    new_table = pa.Table.from_pylist(rows, schema=_SCHEMA)
+    if out_path.exists():
+        old = pq.read_table(out_path)
+        # Reorder/coerce old to match our canonical schema (handles minor
+        # type drift from the migration's COPY).
+        old = old.cast(_SCHEMA, safe=False) if old.schema != _SCHEMA else old
+        new_ids = set(rows[i]["play_id"] for i in range(len(rows)))
+        if new_ids:
+            mask = [pid not in new_ids for pid in old.column("play_id").to_pylist()]
+            kept = old.filter(pa.array(mask))
+            combined = pa.concat_tables([kept, new_table])
+        else:
+            combined = old
+    else:
+        combined = new_table
+
+    pq.write_table(combined, out_path, compression="zstd")
     return len(rows)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", type=int, required=True)
-    ap.add_argument("--data-dir", default="data")
+    ap.add_argument("--data-dir", default=os.environ.get("FV_DATA_DIR", "data"))
     args = ap.parse_args()
 
     data_dir = Path(args.data_dir)
-    conn = open_game_db(args.game, data_dir)
     print(f"Fetching statsapi feed for game {args.game}...")
     feed = fetch_feed(args.game)
-    with transaction(conn):
-        n = ingest_feed_dict(conn, args.game, feed)
-    print(f"Inserted {n} pitch_label rows for game {args.game}")
-    conn.close()
+    rows = feed_to_rows(args.game, feed)
+    n = write_pitch_labels(args.game, data_dir, rows)
+    print(f"Wrote {n} pitch_label rows to {data_dir / str(args.game) / 'pitch_labels.parquet'}")
     return 0
 
 

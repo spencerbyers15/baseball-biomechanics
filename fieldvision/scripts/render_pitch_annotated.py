@@ -17,7 +17,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import sqlite3
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -27,6 +27,7 @@ import numpy as np
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fieldvision.parquet_readers import open_game
 from fieldvision.skeleton import SKELETON_CONNECTIONS
 from fieldvision.storage import JOINT_COLS
 from fieldvision.pitch_kinematics import detect_pitcher_events
@@ -37,13 +38,13 @@ PRE_OSC_SECONDS = 5.0   # pre-windup-onset oscillation window (where the interes
 POST_RELEASE_SECONDS = 1.0
 
 
-def load_play(db_path: Path, play_id: str):
-    conn = sqlite3.connect(str(db_path))
-    conn.row_factory = sqlite3.Row
-    pl = conn.execute("SELECT * FROM pitch_label WHERE play_id=?", (play_id,)).fetchone()
+def load_play(game_pk: int, data_dir: Path, play_id: str):
+    conn = open_game(game_pk, data_dir)
+    res = conn.execute("SELECT * FROM pitch_label WHERE play_id=?", (play_id,))
+    pl = res.fetchone()
     if pl is None:
         raise SystemExit(f"play_id {play_id} not in pitch_label")
-    pl = dict(pl)
+    pl = dict(zip([c[0] for c in res.description], pl))
     release_t = pl["start_time_unix"]
 
     # Time window: pre-osc window for batter analysis through release+1s
@@ -106,13 +107,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", type=int, default=823141)
     ap.add_argument("--play-id", type=str, default="88a54a0d-fbc1-30ee-8cd2-32e3c95e5e35")
-    ap.add_argument("--data-dir", default="data")
+    ap.add_argument("--data-dir", default=os.environ.get("FV_DATA_DIR", "data"))
     ap.add_argument("--out", type=str, default=None)
     ap.add_argument("--fps", type=int, default=30)
     args = ap.parse_args()
 
-    db_path = Path(args.data_dir) / f"fv_{args.game}.sqlite"
-    pl, actors, bats, pfm_t, bop_t = load_play(db_path, args.play_id)
+    pl, actors, bats, pfm_t, bop_t = load_play(args.game, Path(args.data_dir), args.play_id)
     pitcher_id, batter_id = pl["pitcher_id"], pl["batter_id"]
     p_frames = actors.get(pitcher_id, [])
     b_frames = actors.get(batter_id, [])

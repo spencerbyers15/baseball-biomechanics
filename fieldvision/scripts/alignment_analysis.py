@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-import sqlite3
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fieldvision.parquet_readers import list_games, open_game
 from fieldvision.batter_kinematics import detect_batter_events
 from fieldvision.pitch_kinematics import detect_pitcher_events
 from fieldvision.storage import JOINT_COLS
@@ -118,29 +119,28 @@ def compute_waggle_phase_at(b_frames, win_lo, win_hi, target_t):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", default="data")
+    ap.add_argument("--data-dir", default=os.environ.get("FV_DATA_DIR", "data"))
     ap.add_argument("--out-dir", default="data/oscillation_report/pre_pitch_preparatory_movement")
     ap.add_argument("--min-swings", type=int, default=4)
     args = ap.parse_args()
 
     data_dir = Path(args.data_dir)
     out_dir = Path(args.out_dir)
-    db_paths = [str(p) for p in sorted(data_dir.glob("fv_*.sqlite"))
-                if "registry" not in p.name and "backup" not in p.name]
 
     # Build batter pitch list across games, keyed by (mlb_id, side) so switch
     # hitters' L and R at-bats are analyzed separately.
     by_batter = defaultdict(list)
-    for db_path in db_paths:
+    for game_pk in list_games(data_dir):
         try:
-            conn = sqlite3.connect(db_path)
+            conn = open_game(game_pk, data_dir)
         except Exception: continue
         for r in conn.execute(
             "SELECT batter_id, play_id, pitcher_id, start_time_unix, "
             "result_call, pitch_type, batter_side FROM pitch_label "
-            "WHERE batter_id IS NOT NULL AND start_time_unix IS NOT NULL"):
+            "WHERE batter_id IS NOT NULL AND start_time_unix IS NOT NULL"
+        ).fetchall():
             side = r[6] if r[6] in ("L", "R") else "?"
-            by_batter[(r[0], side)].append({"db": db_path, "play_id": r[1], "pitcher_id": r[2],
+            by_batter[(r[0], side)].append({"game_pk": game_pk, "play_id": r[1], "pitcher_id": r[2],
                                     "release_t": r[3], "result_call": r[4], "pitch_type": r[5]})
         conn.close()
 
@@ -168,9 +168,9 @@ def main():
         conns = {}
         per_pitch = []
         for p in pitches:
-            if p["db"] not in conns:
-                conns[p["db"]] = sqlite3.connect(p["db"])
-            d = load_pitch(conns[p["db"]], bid, p["play_id"], p["pitcher_id"], p["release_t"])
+            if p["game_pk"] not in conns:
+                conns[p["game_pk"]] = open_game(p["game_pk"], data_dir)
+            d = load_pitch(conns[p["game_pk"]], bid, p["play_id"], p["pitcher_id"], p["release_t"])
             if d is None: continue
             d.update(result_call=p["result_call"], pitch_type=p["pitch_type"])
             per_pitch.append(d)

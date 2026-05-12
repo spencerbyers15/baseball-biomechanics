@@ -14,7 +14,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import sqlite3
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -24,6 +24,7 @@ import numpy as np
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fieldvision.parquet_readers import open_game
 from fieldvision.skeleton import SKELETON_CONNECTIONS
 from fieldvision.storage import JOINT_COLS
 from fieldvision.pitch_kinematics import detect_pitcher_events
@@ -107,15 +108,14 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", type=int, default=823141)
     ap.add_argument("--batter-id", type=int, required=True)
-    ap.add_argument("--data-dir", default="data")
+    ap.add_argument("--data-dir", default=os.environ.get("FV_DATA_DIR", "data"))
     ap.add_argument("--cols", type=int, default=5)
     ap.add_argument("--rows", type=int, default=4)
     ap.add_argument("--out", type=str, default=None)
     ap.add_argument("--fps", type=int, default=30)
     args = ap.parse_args()
 
-    db_path = Path(args.data_dir) / f"fv_{args.game}.sqlite"
-    conn = sqlite3.connect(str(db_path))
+    conn = open_game(args.game, Path(args.data_dir))
     pitches_meta = conn.execute(
         "SELECT play_id, pitch_type, result_call, pitcher_id, start_time_unix "
         "FROM pitch_label WHERE batter_id=? AND start_time_unix IS NOT NULL "

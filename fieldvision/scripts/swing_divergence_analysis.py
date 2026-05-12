@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import argparse
 import csv
-import sqlite3
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -33,6 +33,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fieldvision.parquet_readers import list_games, open_game
 from fieldvision.batter_kinematics import (ball_bat_min_distance,
                                             detect_batter_events,
                                             interpolate_trajectory)
@@ -52,7 +53,7 @@ POST_TRIGGER_MS = 300  # 0.3s after trigger covers the full swing
 SWING_GRID = np.arange(-PRE_TRIGGER_MS/1000, POST_TRIGGER_MS/1000 + 1e-9, 1/SAMPLE_HZ)
 
 
-def load_batter_swings(db_paths, batter_id):
+def load_batter_swings(game_pks, data_dir, batter_id):
     """Return list of swing dicts for this batter across all games.
 
     Each dict has:
@@ -66,9 +67,9 @@ def load_batter_swings(db_paths, batter_id):
     """
     out = []
     cols = "time_unix, " + ", ".join(f"{n}_x, {n}_y, {n}_z" for _, n in JOINT_COLS)
-    for db_path in db_paths:
+    for game_pk in game_pks:
         try:
-            conn = sqlite3.connect(db_path)
+            conn = open_game(game_pk, data_dir)
         except Exception:
             continue
         rows = conn.execute(
@@ -79,10 +80,6 @@ def load_batter_swings(db_paths, batter_id):
         ).fetchall()
         if not rows:
             conn.close(); continue
-        try:
-            game_pk = int(Path(db_path).stem.split("_")[1])
-        except Exception:
-            game_pk = -1
         joint_cols_select_local = ", ".join(f"{n}_x, {n}_y, {n}_z" for _, n in JOINT_COLS)
         for play_id, call, ptype, speed, pitcher_id, t_rel in rows:
             # Pull batter frames near release (filtered to standing-batter actor only)
@@ -383,16 +380,15 @@ def plot_fooled_score(swings, fooled, dz, pz, out_path, name):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--batter-id", type=int, required=True)
-    ap.add_argument("--data-dir", default="data")
+    ap.add_argument("--data-dir", default=os.environ.get("FV_DATA_DIR", "data"))
     ap.add_argument("--out-dir", default="data/oscillation_report/pre_pitch_preparatory_movement/swing_divergence")
     args = ap.parse_args()
 
     data_dir = Path(args.data_dir)
-    db_paths = [str(p) for p in sorted(data_dir.glob("fv_*.sqlite"))
-                if "registry" not in p.name and "backup" not in p.name]
+    game_pks = list_games(data_dir)
 
-    print(f"loading swings for batter {args.batter_id} from {len(db_paths)} games...")
-    swings = load_batter_swings(db_paths, args.batter_id)
+    print(f"loading swings for batter {args.batter_id} from {len(game_pks)} games...")
+    swings = load_batter_swings(game_pks, data_dir, args.batter_id)
     print(f"  {len(swings)} usable swings")
     if len(swings) < 3:
         print("  too few swings"); return

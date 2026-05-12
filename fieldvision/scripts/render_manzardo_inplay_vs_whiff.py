@@ -15,8 +15,8 @@ Layout:
 from __future__ import annotations
 
 import argparse
+import os
 import pickle
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -25,6 +25,7 @@ import numpy as np
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fieldvision.parquet_readers import list_games, open_game
 from fieldvision.skeleton import SKELETON_CONNECTIONS
 from fieldvision.storage import JOINT_COLS
 from fieldvision.pitch_kinematics import detect_pitcher_events
@@ -199,15 +200,14 @@ def main():
     args = ap.parse_args()
 
     inplay, whiff = [], []
-    for db_path in sorted(Path(args.data_dir).glob("fv_*.sqlite")):
-        if "registry" in db_path.name or "backup" in db_path.name: continue
-        conn = sqlite3.connect(str(db_path))
+    for game_pk in list_games(Path(args.data_dir)):
+        conn = open_game(game_pk, Path(args.data_dir))
         try:
             rows = conn.execute(
                 "SELECT play_id, pitcher_id, start_time_unix, pitch_type, result_call "
                 "FROM pitch_label WHERE batter_id=? AND start_time_unix IS NOT NULL",
                 (MANZARDO,)).fetchall()
-        except sqlite3.OperationalError:
+        except Exception:
             conn.close(); continue
         for play_id, pitcher_id, t_rel, pt, call in rows:
             if call not in ("X", "S"): continue

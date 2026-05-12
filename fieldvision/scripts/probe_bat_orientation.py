@@ -11,7 +11,6 @@ For each frame we compute:
 
 from __future__ import annotations
 
-import sqlite3
 import sys
 from pathlib import Path
 
@@ -19,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fieldvision.parquet_readers import list_games, open_game
 from fieldvision.storage import JOINT_COLS
 from fieldvision.pitch_kinematics import detect_pitcher_events
 from fieldvision.validate_frames import (load_clean_batter_actor_frames,
@@ -39,15 +39,14 @@ def main():
     bat_pitch_deg = []
     head_minus_handle_x = []
 
-    for db_path in sorted(Path("data").glob("fv_*.sqlite")):
-        if "registry" in db_path.name or "backup" in db_path.name: continue
-        conn = sqlite3.connect(str(db_path))
+    for game_pk in list_games(Path(os.environ.get("FV_DATA_DIR", "data"))):
+        conn = open_game(game_pk, Path(os.environ.get("FV_DATA_DIR", "data")))
         try:
             rows = conn.execute(
                 "SELECT play_id, pitcher_id, start_time_unix "
                 "FROM pitch_label WHERE batter_id=? AND start_time_unix IS NOT NULL",
                 (MANZARDO,)).fetchall()
-        except sqlite3.OperationalError:
+        except Exception:
             conn.close(); continue
         for play_id, pid, t_rel in rows:
             prr = load_clean_batter_actor_frames(

@@ -11,7 +11,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import sqlite3
+import os
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -21,6 +21,7 @@ import numpy as np
 from matplotlib.animation import FFMpegWriter, FuncAnimation
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fieldvision.parquet_readers import open_game
 from fieldvision.skeleton import SKELETON_CONNECTIONS
 from fieldvision.storage import JOINT_COLS
 
@@ -41,9 +42,9 @@ JOINT_LABEL_3D = {0: "Pelv", 21: "Head", 4: "R.Foot", 12: "L.Foot",
                   28: "R.Hand", 67: "L.Hand"}
 
 
-def load_clip(db_path: Path, start_seg: int, n_segments: int):
+def load_clip(game_pk: int, data_dir: Path, start_seg: int, n_segments: int):
     """Pull all actor-frame rows + bat_frame rows in the segment range."""
-    conn = sqlite3.connect(str(db_path))
+    conn = open_game(game_pk, data_dir)
     cur = conn.cursor()
     end_seg = start_seg + n_segments
 
@@ -114,7 +115,7 @@ def load_clip(db_path: Path, start_seg: int, n_segments: int):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--game", type=int, default=823141)
-    parser.add_argument("--data-dir", default="data")
+    parser.add_argument("--data-dir", default=os.environ.get("FV_DATA_DIR", "data"))
     parser.add_argument("--start-segment", type=int, default=1582)
     parser.add_argument("--duration", type=int, default=30, help="Seconds")
     parser.add_argument("--out", default=None)
@@ -123,9 +124,8 @@ def main():
     args = parser.parse_args()
 
     n_segments = args.duration // 5  # 5 sec per segment
-    db_path = Path(args.data_dir) / f"fv_{args.game}.sqlite"
-    print(f"Reading from {db_path}")
-    frames = load_clip(db_path, args.start_segment, n_segments)
+    print(f"Reading game {args.game} from {args.data_dir}")
+    frames = load_clip(args.game, Path(args.data_dir), args.start_segment, n_segments)
     if not frames:
         raise SystemExit("No frames found in the requested range")
 

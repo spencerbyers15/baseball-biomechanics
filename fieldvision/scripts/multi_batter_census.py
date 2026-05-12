@@ -13,8 +13,8 @@ from __future__ import annotations
 import argparse
 import glob
 import json
+import os
 import pickle
-import sqlite3
 import sys
 import time
 import urllib.request
@@ -25,6 +25,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from fieldvision.storage import JOINT_COLS
+from fieldvision.parquet_readers import list_games, open_game
 from fieldvision.pitch_kinematics import detect_pitcher_events
 from fieldvision.validate_frames import (load_clean_batter_actor_frames,
                                           filter_bat_frames,
@@ -46,28 +47,18 @@ N_PRE_OSC_FRAMES = int(PRE_OSC_SECONDS * SAMPLE_HZ)
 def get_batter_pitches_across_games(data_dir: Path):
     """Return dict[batter_id] -> list of pitch dicts across all games."""
     by_batter = defaultdict(list)
-    for db_path in sorted(data_dir.glob("fv_*.sqlite")):
-        if "registry" in db_path.name or ".pre-v2-backup" in db_path.name:
-            continue
+    for game_pk in list_games(data_dir):
         try:
-            game_pk = int(db_path.stem.split("_")[1])
-        except (ValueError, IndexError):
-            continue
-        try:
-            conn = sqlite3.connect(str(db_path))
+            conn = open_game(game_pk, data_dir)
             for r in conn.execute(
                 "SELECT batter_id, play_id, pitcher_id, start_time_unix, "
                 "pitch_type, result_call, batter_side, pitcher_throws, "
                 "start_speed FROM pitch_label "
                 "WHERE batter_id IS NOT NULL AND start_time_unix IS NOT NULL"
-            ):
+            ).fetchall():
                 side = r[6] if r[6] in ("L", "R", "S") else "?"
                 # Treat switch hitters' L and R at-bats as separate "batter entries"
                 # since stance/waggle pattern is completely different per side.
-                # The 'S' batSide code in statsapi is "switch" but the actual side
-                # used for a pitch is recorded per-pitch. Use whichever side this
-                # specific pitch was hit from. If statsapi says 'S' (shouldn't),
-                # fallback to '?'.
                 key = (r[0], side)
                 by_batter[key].append({
                     "game_pk": game_pk,
@@ -79,11 +70,10 @@ def get_batter_pitches_across_games(data_dir: Path):
                     "batter_side": side,
                     "pitcher_throws": r[7],
                     "start_speed": r[8],
-                    "db_path": str(db_path),
                 })
             conn.close()
         except Exception as e:
-            print(f"  WARN: skipping {db_path.name}: {e}")
+            print(f"  WARN: skipping game {game_pk}: {e}")
     return dict(by_batter)
 
 
@@ -292,9 +282,9 @@ def analyze_batter(batter_id, pitches_meta, verbose=False):
     pitches = []
     db_conns = {}
     for pm in pitches_meta:
-        if pm["db_path"] not in db_conns:
-            db_conns[pm["db_path"]] = sqlite3.connect(pm["db_path"])
-        conn = db_conns[pm["db_path"]]
+        if pm["game_pk"] not in db_conns:
+            db_conns[pm["game_pk"]] = open_game(pm["game_pk"])
+        conn = db_conns[pm["game_pk"]]
         d = load_pitch_data(conn, batter_id, pm["play_id"], pm["pitcher_id"], pm["release_t"])
         if d is None: continue
         d.update(pitch_type=pm["pitch_type"], result_call=pm["result_call"],
@@ -630,7 +620,7 @@ def analyze_batter(batter_id, pitches_meta, verbose=False):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data-dir", default="data")
+    ap.add_argument("--data-dir", default=os.environ.get("FV_DATA_DIR", "data"))
     ap.add_argument("--min-pitches", type=int, default=10)
     ap.add_argument("--output", type=str,
                     default="data/oscillation_report/pre_pitch_preparatory_movement/census.pkl")
