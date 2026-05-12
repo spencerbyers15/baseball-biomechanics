@@ -46,9 +46,12 @@ from fieldvision.storage import (_actor_frame_insert_sql, _pitch_event_insert_sq
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SAMPLES_DIR = REPO_ROOT / "samples"
-DATA_DIR = REPO_ROOT / "data"
-STATE_DIR = REPO_ROOT / "state"
+# data/samples/state can be redirected via env vars when running on a host
+# where the repo lives in one place but bulk storage lives elsewhere
+# (e.g., Nellie: repo on NAS read-mostly, data on NAS at a separate path).
+SAMPLES_DIR = Path(os.environ.get("FV_SAMPLES_DIR", REPO_ROOT / "samples"))
+DATA_DIR = Path(os.environ.get("FV_DATA_DIR", REPO_ROOT / "data"))
+STATE_DIR = Path(os.environ.get("FV_STATE_DIR", REPO_ROOT / "state"))
 TOKEN_FILE = REPO_ROOT / ".fv_token.txt"
 
 SCHEDULE_POLL_S = 600         # 10 min between schedule fetches
