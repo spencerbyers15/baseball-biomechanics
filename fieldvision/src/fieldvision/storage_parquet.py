@@ -329,3 +329,136 @@ class ParquetGameStore:
         for w in self._writers.values():
             w.close()
         self._writers.clear()
+
+
+# ────────────────────────────────────────────────────────────────────────
+# Segment ingestion — Parquet equivalent of storage.ingest_segment
+# ────────────────────────────────────────────────────────────────────────
+
+# Column names for the three smaller per-frame tables, matching the order
+# in which storage.ingest_segment builds tuples.
+BAT_FRAME_COLS = [
+    "game_pk", "segment_idx", "frame_num", "time_unix",
+    "head_x", "head_y", "head_z",
+    "handle_x", "handle_y", "handle_z",
+]
+BALL_FRAME_COLS = [
+    "game_pk", "segment_idx", "frame_num", "time_unix",
+    "ball_x", "ball_y", "ball_z",
+]
+PITCH_EVENT_COLS = [
+    "game_pk", "segment_idx", "frame_num", "time_unix",
+    "event_type", "play_id", "pos_x", "pos_y", "pos_z",
+]
+
+
+def ingest_segment_parquet(
+    store: "ParquetGameStore",
+    game_pk: int,
+    segment_idx: int,
+    bin_path: Path,
+    labels_dict: dict[int, dict],
+) -> tuple[int, int]:
+    """Decode one .bin segment and add all rows to the Parquet store.
+    Mirrors storage.ingest_segment but writes to Parquet instead of SQLite.
+    Returns (n_actor_rows, n_ball_rows)."""
+    # Imports kept local to avoid circular imports + cheap on every call
+    from fieldvision.skeleton import forward_kinematics
+    from fieldvision.storage import _build_actor_frame_row
+    from fieldvision.wire_schemas import read_tracking_data, unpack_smallest_three
+
+    td = read_tracking_data(bin_path.read_bytes())
+    actor_rows: list[tuple] = []
+    ball_rows: list[tuple] = []
+    bat_rows: list[tuple] = []
+    pitch_event_rows: list[tuple] = []
+
+    for f in td.frames:
+        is_gap = f.isGap
+        time_unix = f.time
+        ts = f.timestamp
+
+        if f.ballPosition is not None:
+            ball_rows.append((
+                game_pk, segment_idx, f.num, time_unix,
+                f.ballPosition.x, f.ballPosition.y, f.ballPosition.z,
+            ))
+
+        if (f.inferredBat is not None and f.inferredBat.headPosition is not None
+                and f.inferredBat.handlePosition is not None):
+            head = f.inferredBat.headPosition
+            handle = f.inferredBat.handlePosition
+            bat_rows.append((
+                game_pk, segment_idx, f.num, time_unix,
+                head.x, head.y, head.z, handle.x, handle.y, handle.z,
+            ))
+
+        for ge in f.gameEvents:
+            if ge.dataType == 7 and ge.playId:
+                pitch_event_rows.append((
+                    game_pk, segment_idx, f.num, time_unix,
+                    "PLAY_EVENT", ge.playId, None, None, None,
+                ))
+        for te in f.trackedEvents:
+            if te.eventType:
+                pitch_event_rows.append((
+                    game_pk, segment_idx, f.num, time_unix,
+                    te.eventType, None, te.x, te.y, te.z,
+                ))
+
+        for a in f.actorPoses:
+            if a.rootPos is None:
+                continue
+            quats = [unpack_smallest_three(p) for p in a.packedQuats]
+            ws = forward_kinematics(
+                root_pos=(a.rootPos.x, a.rootPos.y, a.rootPos.z),
+                scale=a.scale if a.scale > 0 else 1.0,
+                node_ids=a.nodeIds,
+                quats_xyzw=quats,
+            )
+            world_pos = {bid: list(p) for bid, p in ws.bone_world_pos.items()}
+            world_rot = dict(ws.bone_world_rot) if ws.bone_world_rot else None
+            label_info = labels_dict.get(a.uid, {})
+            mlb_id = label_info.get("actor")
+            atype = label_info.get("type")
+            bat = ((a.batRootPos.x, a.batRootPos.y, a.batRootPos.z)
+                   if a.batRootPos else None)
+            actor_rows.append(_build_actor_frame_row(
+                game_pk, segment_idx, f.num, time_unix, ts, is_gap,
+                a.uid, atype, mlb_id, a.scale, a.ground, a.apex,
+                world_pos, bat, world_rot,
+            ))
+
+    # Push to Parquet store
+    if actor_rows:
+        store.add_actor_frames(actor_rows)
+    if ball_rows:
+        store.add_dict_rows("ball_frames",
+                             [dict(zip(BALL_FRAME_COLS, r)) for r in ball_rows])
+    if bat_rows:
+        store.add_dict_rows("bat_frames",
+                             [dict(zip(BAT_FRAME_COLS, r)) for r in bat_rows])
+    if pitch_event_rows:
+        store.add_dict_rows("pitch_events",
+                             [dict(zip(PITCH_EVENT_COLS, r)) for r in pitch_event_rows])
+    return len(actor_rows), len(ball_rows)
+
+
+def max_segment_idx_for_game(data_dir: Path, game_pk: int) -> int:
+    """Return the highest segment_idx already ingested for a game (for resume),
+    or -1 if the game has no Parquet data yet. Reads only the actor_frames
+    Parquet column metadata — no full scan."""
+    p = Path(data_dir) / str(game_pk) / "actor_frames.parquet"
+    if not p.exists():
+        return -1
+    try:
+        # Use DuckDB so we can do a max() without loading the file
+        import duckdb
+        con = duckdb.connect()
+        max_seg = con.execute(
+            f"SELECT MAX(segment_idx) FROM read_parquet('{p.as_posix()}')"
+        ).fetchone()[0]
+        con.close()
+        return int(max_seg) if max_seg is not None else -1
+    except Exception:
+        return -1

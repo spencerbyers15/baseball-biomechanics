@@ -128,12 +128,16 @@ def probe_availability(pk: int, token: str) -> int | None:
 
 
 def scrape_one_game(pk: int, token: str, delete_bins: bool) -> dict:
-    """Download all segments for a game and ingest into SQLite."""
+    """Download all segments for a game and ingest into per-game Parquet."""
+    from fieldvision.storage_parquet import (
+        ParquetGameStore, ingest_segment_parquet, max_segment_idx_for_game,
+    )
+
     base = f"https://fieldvision-hls.mlbinfra.com/mannequin/{pk}/1.6.2"
     out_dir = SAMPLES_DIR / f"binary_capture_{pk}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Schemas
+    # Manifest + small JSON metadata
     for name in ("manifest.json", "metadata.json", "labels.json"):
         target = out_dir / f"mlb_{pk}_{name}"
         s, body = http_get(f"{base}/{name}", token)
@@ -145,64 +149,53 @@ def scrape_one_game(pk: int, token: str, delete_bins: bool) -> dict:
     n_segments = len(manifest.get("records", []))
     log(f"  manifest: {n_segments} segments, status={manifest.get('status')}")
 
-    # Open DB + load lookups
-    conn = open_game_db(pk, DATA_DIR)
-    cur = conn.execute("SELECT COUNT(*) FROM labels")
-    if cur.fetchone()[0] == 0:
-        labels_dict = load_lookup_tables(
-            conn, out_dir / f"mlb_{pk}_metadata.json", out_dir / f"mlb_{pk}_labels.json"
-        )
-    else:
-        labels_dict = {row[0]: {"actor": row[1], "type": row[2]}
-                       for row in conn.execute("SELECT actor_uid, actor, actor_type FROM labels")}
-    insert_sql = _actor_frame_insert_sql()
+    # Parquet store + lookups
+    store = ParquetGameStore(pk, DATA_DIR)
+    metadata = json.loads((out_dir / f"mlb_{pk}_metadata.json").read_text())
+    labels = json.loads((out_dir / f"mlb_{pk}_labels.json").read_text())
+    labels_dict = store.write_lookups_from_metadata(metadata, labels)
 
-    # Determine which segments need downloading
-    cur = conn.execute("SELECT MAX(segment_idx) FROM actor_frame")
-    row = cur.fetchone()
-    last_in_db = row[0] if row[0] is not None else -1
-    new_indices = [i for i in range(last_in_db + 1, n_segments)]
-    log(f"  ingest range: segments {last_in_db + 1}..{n_segments - 1}  ({len(new_indices)} to fetch)")
+    # Resume: skip segments already in actor_frames.parquet
+    last_in_store = max_segment_idx_for_game(DATA_DIR, pk)
+    new_indices = [i for i in range(last_in_store + 1, n_segments)]
+    log(f"  ingest range: segments {last_in_store + 1}..{n_segments - 1}  ({len(new_indices)} to fetch)")
 
     fetched = 0
     failed = 0
     t0 = time.monotonic()
-    for i in new_indices:
-        s, body = http_get(f"{base}/{i}.bin", token)
-        if s == 404:
-            continue
-        if s != 200:
-            log(f"    ✗ segment {i}: HTTP {s}")
-            failed += 1
-            if failed > 50:
-                log(f"    too many failures — aborting this game")
-                break
-            continue
-        bin_path = out_dir / f"mlb_{pk}_segment_{i}.bin"
-        bin_path.write_bytes(body)
-        try:
-            with transaction(conn):
-                ingest_segment(conn, pk, i, bin_path, labels_dict, insert_sql)
-            fetched += 1
-            if delete_bins:
-                bin_path.unlink()
-        except Exception as e:
-            log(f"    ingest segment {i}: {e}")
-            failed += 1
-        if fetched % 200 == 0 and fetched > 0:
-            elapsed = time.monotonic() - t0
-            rate = fetched / max(elapsed, 0.1)
-            eta = (len(new_indices) - fetched) / max(rate, 0.1)
-            log(f"    {fetched}/{len(new_indices)}  ({rate:.1f} seg/s, eta {eta:.0f}s)")
-        time.sleep(0.3)
-
-    reg = open_registry(DATA_DIR)
-    update_registry(reg, conn, pk, DATA_DIR / f"fv_{pk}.sqlite")
-    reg.close()
-    conn.close()
+    try:
+        for i in new_indices:
+            s, body = http_get(f"{base}/{i}.bin", token)
+            if s == 404:
+                continue
+            if s != 200:
+                log(f"    ✗ segment {i}: HTTP {s}")
+                failed += 1
+                if failed > 50:
+                    log(f"    too many failures — aborting this game")
+                    break
+                continue
+            bin_path = out_dir / f"mlb_{pk}_segment_{i}.bin"
+            bin_path.write_bytes(body)
+            try:
+                ingest_segment_parquet(store, pk, i, bin_path, labels_dict)
+                fetched += 1
+                if delete_bins:
+                    bin_path.unlink()
+            except Exception as e:
+                log(f"    ingest segment {i}: {e}")
+                failed += 1
+            if fetched % 200 == 0 and fetched > 0:
+                elapsed = time.monotonic() - t0
+                rate = fetched / max(elapsed, 0.1)
+                eta = (len(new_indices) - fetched) / max(rate, 0.1)
+                log(f"    {fetched}/{len(new_indices)}  ({rate:.1f} seg/s, eta {eta:.0f}s)")
+            time.sleep(0.3)
+    finally:
+        store.finalize()
 
     if delete_bins:
-        # Also remove the schema JSONs since the SQLite has it all
+        # Also remove the schema JSONs since the Parquets have everything
         for name in ("manifest.json", "metadata.json", "labels.json"):
             p = out_dir / f"mlb_{pk}_{name}"
             if p.exists():
