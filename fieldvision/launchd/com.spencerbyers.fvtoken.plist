@@ -8,38 +8,28 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/spencerbyers/fieldvision/scripts/refresh_token_via_chrome.sh</string>
+        <string>-c</string>
+        <string>REPO_ROOT=/Users/spencerbyers/fieldvision bash /Users/spencerbyers/fieldvision/scripts/refresh_token_via_chrome.sh &amp;&amp; /usr/bin/scp /Users/spencerbyers/fieldvision/.fv_token.txt nellie:/media/scratch/spencer/github/baseball-biomechanics/fieldvision/.fv_token.txt</string>
     </array>
 
-    <key>WorkingDirectory</key>
-    <string>/Users/spencerbyers/fieldvision</string>
+    <key>StartInterval</key>
+    <integer>43200</integer>
 
     <key>RunAtLoad</key>
     <true/>
 
-    <key>StartInterval</key>
-    <integer>7200</integer>
-
     <key>StandardOutPath</key>
-    <string>/Users/spencerbyers/fieldvision/scheduler.log</string>
+    <string>/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision/state/fvtoken.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/spencerbyers/fieldvision/scheduler.err</string>
+    <string>/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision/state/fvtoken.err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>HOME</key>
         <string>/Users/spencerbyers</string>
-        <key>USER</key>
-        <string>spencerbyers</string>
-        <key>PATH</key>
-        <string>/Users/spencerbyers/anaconda3/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
-        <key>REPO_ROOT</key>
-        <string>/Users/spencerbyers/fieldvision</string>
-        <key>PY</key>
-        <string>/Users/spencerbyers/anaconda3/bin/python3</string>
-        <key>MIN_HOURS_LEFT</key>
-        <string>6</string>
     </dict>
 </dict>
 </plist>
