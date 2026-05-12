@@ -170,7 +170,7 @@ def write_pitch_labels(game_pk: int, data_dir: Path, rows: list[dict]) -> int:
         new_ids = set(rows[i]["play_id"] for i in range(len(rows)))
         if new_ids:
             mask = [pid not in new_ids for pid in old.column("play_id").to_pylist()]
-            kept = old.filter(pa.array(mask))
+            kept = old.filter(pa.array(mask, type=pa.bool_()))
             combined = pa.concat_tables([kept, new_table])
         else:
             combined = old
