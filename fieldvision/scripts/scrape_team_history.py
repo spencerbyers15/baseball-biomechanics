@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -38,8 +39,10 @@ from fieldvision.storage import (_actor_frame_insert_sql, ingest_segment,
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SAMPLES_DIR = REPO_ROOT / "samples"
-DATA_DIR = REPO_ROOT / "data"
+# Honor the same env var overrides as fv_daemon, so bulk data can go to
+# a path outside the repo (e.g., NAS-mounted bulk store).
+SAMPLES_DIR = Path(os.environ.get("FV_SAMPLES_DIR", REPO_ROOT / "samples"))
+DATA_DIR = Path(os.environ.get("FV_DATA_DIR", REPO_ROOT / "data"))
 TOKEN_FILE = REPO_ROOT / ".fv_token.txt"
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
