@@ -204,19 +204,51 @@ CREATE TABLE IF NOT EXISTS games (
 """
 
 
+def _is_cifs_path(p: Path) -> bool:
+    """Heuristic: True if the path lives on a CIFS/SMB mount.
+    Linux only — peeks at /proc/mounts to see if any prefix matches."""
+    try:
+        p_abs = str(p.resolve())
+        with open("/proc/mounts") as f:
+            for line in f:
+                fields = line.split()
+                if len(fields) < 3: continue
+                mountpoint, fstype = fields[1], fields[2]
+                if fstype.lower() == "cifs" and p_abs.startswith(mountpoint):
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+def _sqlite_connect(db_path: Path) -> sqlite3.Connection:
+    """Connect to SQLite. Detects CIFS mounts and uses ?nolock=1 since
+    CIFS doesn't support POSIX byte-range locks reliably. Safe because the
+    daemon is the only writer and reads are tolerant of in-flight writes."""
+    if _is_cifs_path(db_path):
+        uri = f"file:{db_path}?nolock=1"
+        return sqlite3.connect(uri, uri=True)
+    return sqlite3.connect(str(db_path))
+
+
 def open_game_db(game_pk: int, data_dir: Path) -> sqlite3.Connection:
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path = data_dir / f"fv_{game_pk}.sqlite"
-    conn = sqlite3.connect(str(db_path))
+    conn = _sqlite_connect(db_path)
     conn.executescript(SCHEMA)
-    conn.execute("PRAGMA journal_mode = WAL")
+    # On CIFS, WAL mode also requires file locking which is what we're
+    # avoiding — use DELETE journal mode there instead.
+    if _is_cifs_path(db_path):
+        conn.execute("PRAGMA journal_mode = DELETE")
+    else:
+        conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 
 def open_registry(data_dir: Path) -> sqlite3.Connection:
     data_dir.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(data_dir / "games_registry.sqlite"))
+    conn = _sqlite_connect(data_dir / "games_registry.sqlite")
     conn.executescript(REGISTRY_SCHEMA)
     return conn
 
