@@ -164,15 +164,16 @@ def scrape_one_game(pk: int, token: str, delete_bins: bool) -> dict:
     n_segments = len(manifest.get("records", []))
     log(f"  manifest: {n_segments} segments, status={manifest.get('status')}")
 
-    # Parquet store + lookups
-    store = ParquetGameStore(pk, DATA_DIR)
+    # Resume: skip segments already in actor_frames.parquet. If there's
+    # existing data, write new segments to a suffixed file so pyarrow's
+    # ParquetWriter doesn't truncate the canonical actor_frames.parquet.
+    last_in_store = max_segment_idx_for_game(DATA_DIR, pk)
+    new_indices = [i for i in range(last_in_store + 1, n_segments)]
+    suffix = f"resume-{int(time.time())}" if last_in_store >= 0 else None
+    store = ParquetGameStore(pk, DATA_DIR, append_suffix=suffix)
     metadata = json.loads((out_dir / f"mlb_{pk}_metadata.json").read_text())
     labels = json.loads((out_dir / f"mlb_{pk}_labels.json").read_text())
     labels_dict = store.write_lookups_from_metadata(metadata, labels)
-
-    # Resume: skip segments already in actor_frames.parquet
-    last_in_store = max_segment_idx_for_game(DATA_DIR, pk)
-    new_indices = [i for i in range(last_in_store + 1, n_segments)]
     log(f"  ingest range: segments {last_in_store + 1}..{n_segments - 1}  ({len(new_indices)} to fetch)")
 
     fetched = 0
