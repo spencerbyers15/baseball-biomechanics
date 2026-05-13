@@ -10,8 +10,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))  # so scripts/*.py is importable
 
-from scripts.scrape_team_history import scrape_one_game
+from scrape_team_history import scrape_one_game  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TOKEN = (REPO_ROOT / ".fv_token.txt").read_text().strip()
