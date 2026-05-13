@@ -28,7 +28,9 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 PK = int(sys.argv[1]) if len(sys.argv) > 1 else 824438
 TOKEN = (REPO_ROOT / ".fv_token.txt").read_text().strip()
 
-TMP = Path(f"/tmp/fv_test_{PK}")
+TMP = Path(
+    os.environ.get("FV_TEST_TMP", f"/media/scratch/spencer/data/fieldvision/test/fv_test_{PK}")
+)
 DIR_A = TMP / "a"
 DIR_B = TMP / "b"
 
