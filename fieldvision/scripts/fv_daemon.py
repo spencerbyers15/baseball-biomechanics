@@ -240,8 +240,12 @@ def scrape_game_once(game_pk: int, token: str) -> dict:
         return {"ok": True, "new": 0, "manifest_status": manifest.get("status"),
                 "total": n_segments}
 
-    # Open Parquet store and write lookups (idempotent — overwrites)
-    store = ParquetGameStore(game_pk, DATA_DIR)
+    # Open Parquet store and write lookups (idempotent — overwrites).
+    # CRITICAL: append_suffix is per-poll so each scrape_game_once call writes
+    # to its own actor_frames-<suffix>.parquet instead of clobbering the
+    # game's single file each cycle. The reader unions them at query time.
+    poll_suffix = f"poll-{int(time.time())}"
+    store = ParquetGameStore(game_pk, DATA_DIR, append_suffix=poll_suffix)
     metadata = json.loads(metadata_path.read_text())
     labels = json.loads(labels_path.read_text())
     labels_dict = store.write_lookups_from_metadata(metadata, labels)

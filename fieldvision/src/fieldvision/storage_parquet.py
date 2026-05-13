@@ -201,14 +201,34 @@ class ParquetGameStore:
 
     def __init__(self, game_pk: int, data_dir: Path,
                  row_group_size: int = 100_000,
-                 compression: str = "zstd"):
+                 compression: str = "zstd",
+                 append_suffix: str | None = None):
+        """
+        append_suffix: when set, time-series tables (actor_frames, bat_frames,
+            ball_frames, pitch_events) write to `<table>-<suffix>.parquet`
+            instead of `<table>.parquet`. Use this for the live daemon, where
+            every poll cycle creates a fresh store — otherwise pyarrow's
+            ParquetWriter truncates the single file each poll, silently
+            destroying prior data. Lookup tables (players/labels/bones/meta)
+            always use the canonical name since they're idempotent rewrites.
+        """
         self.game_pk = int(game_pk)
         self.dir = Path(data_dir) / str(self.game_pk)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.row_group_size = row_group_size
         self.compression = compression
+        self.append_suffix = append_suffix
         self._buffers: dict[str, list[dict]] = {k: [] for k in SCHEMAS}
         self._writers: dict[str, pq.ParquetWriter] = {}
+
+    # Tables that get the per-instance suffix when append_suffix is set.
+    # Lookup tables don't — they're small + idempotent.
+    _APPEND_TABLES = ("actor_frames", "bat_frames", "ball_frames", "pitch_events")
+
+    def _path_for(self, table: str) -> Path:
+        if self.append_suffix and table in self._APPEND_TABLES:
+            return self.dir / f"{table}-{self.append_suffix}.parquet"
+        return self.dir / f"{table}.parquet"
 
     # ─────────────────────────────────────────────
     # row buffering
@@ -305,7 +325,7 @@ class ParquetGameStore:
             arrays.append(pa.array([row.get(field.name) for row in rows], type=field.type))
         record_batch = pa.RecordBatch.from_arrays(arrays, schema=schema)
         if table not in self._writers:
-            path = self.dir / f"{table}.parquet"
+            path = self._path_for(table)
             self._writers[table] = pq.ParquetWriter(str(path), schema,
                                                     compression=self.compression)
         self._writers[table].write_table(pa.Table.from_batches([record_batch], schema=schema))
@@ -313,6 +333,7 @@ class ParquetGameStore:
 
     def _write_table_one_shot(self, table: str, rows: list[dict]) -> None:
         """Overwrites the Parquet file for a small table — used for lookups."""
+        # Lookup tables always use the canonical (no-suffix) path.
         path = self.dir / f"{table}.parquet"
         schema = SCHEMAS[table]
         if rows:
@@ -444,19 +465,45 @@ def ingest_segment_parquet(
     return len(actor_rows), len(ball_rows)
 
 
+def actor_frame_parquet_paths(data_dir: Path, game_pk: int) -> list[Path]:
+    """All actor_frames*.parquet files for a game, in lexicographic order.
+
+    Returns the canonical single file (`actor_frames.parquet`) plus any
+    per-poll appended files (`actor_frames-<suffix>.parquet`) the live
+    daemon writes. Filters out empty / footer-less files so callers see
+    only finalized data."""
+    gdir = Path(data_dir) / str(game_pk)
+    if not gdir.is_dir():
+        return []
+    out = []
+    for p in sorted(gdir.glob("actor_frames*.parquet")):
+        if p.stat().st_size < 8:
+            continue
+        try:
+            with p.open("rb") as f:
+                f.seek(-4, 2)
+                if f.read(4) != b"PAR1":
+                    continue
+        except OSError:
+            continue
+        out.append(p)
+    return out
+
+
 def max_segment_idx_for_game(data_dir: Path, game_pk: int) -> int:
     """Return the highest segment_idx already ingested for a game (for resume),
     or -1 if the game has no Parquet data yet. Reads only the actor_frames
     Parquet column metadata — no full scan."""
-    p = Path(data_dir) / str(game_pk) / "actor_frames.parquet"
-    if not p.exists():
+    paths = actor_frame_parquet_paths(data_dir, game_pk)
+    if not paths:
         return -1
     try:
-        # Use DuckDB so we can do a max() without loading the file
+        # Use DuckDB so we can do a max() without loading any data
         import duckdb
         con = duckdb.connect()
+        files_sql = "[" + ", ".join(f"'{p.as_posix()}'" for p in paths) + "]"
         max_seg = con.execute(
-            f"SELECT MAX(segment_idx) FROM read_parquet('{p.as_posix()}')"
+            f"SELECT MAX(segment_idx) FROM read_parquet({files_sql})"
         ).fetchone()[0]
         con.close()
         return int(max_seg) if max_seg is not None else -1

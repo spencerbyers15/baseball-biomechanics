@@ -69,6 +69,21 @@ def _parquet_finalized(p: Path) -> bool:
         return False
 
 
+def _finalized_parquets_for_table(gdir: Path, fname: str) -> list[Path]:
+    """Return every finalized parquet for one logical table.
+
+    Time-series tables (actor_frames, bat_frames, ball_frames, pitch_events)
+    may be split across the canonical `<fname>.parquet` plus per-poll files
+    like `<fname>-<suffix>.parquet` that the live daemon writes. Lookup
+    tables only ever have the single canonical file.
+    """
+    candidates = [gdir / f"{fname}.parquet"]
+    # Glob -suffixed appended files (only relevant for time-series tables;
+    # for lookup tables this glob just returns nothing extra).
+    candidates += sorted(gdir.glob(f"{fname}-*.parquet"))
+    return [p for p in candidates if p.exists() and _parquet_finalized(p)]
+
+
 def open_game(game_pk: int, data_dir: Path | None = None) -> duckdb.DuckDBPyConnection:
     """Return a DuckDB connection with views for every Parquet file the
     game has on disk. Missing tables (e.g. a game without `pitch_label`
@@ -78,17 +93,22 @@ def open_game(game_pk: int, data_dir: Path | None = None) -> duckdb.DuckDBPyConn
     Files that exist but aren't finalized (no Parquet footer — the daemon
     is still appending) are also skipped silently so a backfill in
     flight doesn't poison every reader.
+
+    Per-poll appended files (`actor_frames-<suffix>.parquet`) are unioned
+    into the same view alongside `actor_frames.parquet`.
     """
     gdir = game_dir(game_pk, data_dir)
     if not gdir.exists():
         raise FileNotFoundError(f"no game dir for {game_pk}: {gdir}")
     con = duckdb.connect()
     for table, fname in _TABLE_TO_FILE.items():
-        p = gdir / f"{fname}.parquet"
-        if not p.exists() or not _parquet_finalized(p):
+        paths = _finalized_parquets_for_table(gdir, fname)
+        if not paths:
             continue
+        files_sql = "[" + ", ".join(f"'{p.as_posix()}'" for p in paths) + "]"
         con.execute(
-            f"CREATE VIEW {table} AS SELECT * FROM read_parquet('{p.as_posix()}')"
+            f"CREATE VIEW {table} AS "
+            f"SELECT * FROM read_parquet({files_sql}, union_by_name=true)"
         )
     return con
 
@@ -119,13 +139,13 @@ def open_games(game_pks: list[int], data_dir: Path | None = None,
 
 def list_games(data_dir: Path | None = None) -> list[int]:
     """All gamePks present on disk (i.e. all numeric subdirs of data_dir
-    that contain at least an actor_frames.parquet)."""
+    that contain at least one actor_frames*.parquet)."""
     dd = data_dir or _default_data_dir()
     if not dd.exists():
         return []
     out = []
     for p in dd.iterdir():
-        if p.is_dir() and p.name.isdigit() and (p / "actor_frames.parquet").exists():
+        if p.is_dir() and p.name.isdigit() and any(p.glob("actor_frames*.parquet")):
             out.append(int(p.name))
     return sorted(out)
 
