@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.spencerbyers.fvtoken-watchdog</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision/scripts/refresh_token_watchdog.sh</string>
+    </array>
+
+    <!-- Poll every 60s. Each poll is one fast ssh check + (only when needed)
+         a Chrome refresh + scp. Cheap when the system is healthy. -->
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision/state/watchdog.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision/state/watchdog.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/spencerbyers</string>
+    </dict>
+</dict>
+</plist>

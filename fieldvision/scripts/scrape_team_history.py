@@ -43,7 +43,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # a path outside the repo (e.g., NAS-mounted bulk store).
 SAMPLES_DIR = Path(os.environ.get("FV_SAMPLES_DIR", REPO_ROOT / "samples"))
 DATA_DIR = Path(os.environ.get("FV_DATA_DIR", REPO_ROOT / "data"))
+STATE_DIR = Path(os.environ.get("FV_STATE_DIR", REPO_ROOT / "state"))
 TOKEN_FILE = REPO_ROOT / ".fv_token.txt"
+
+
+def mark_token_expired(reason: str) -> None:
+    """Touch state/token_expired.flag so the Mac watchdog triggers a refresh."""
+    try:
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        flag = STATE_DIR / "token_expired.flag"
+        flag.write_text(f"{datetime.now().isoformat()} {reason}\n")
+    except Exception:
+        pass
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -142,6 +153,10 @@ def scrape_one_game(pk: int, token: str, delete_bins: bool) -> dict:
         target = out_dir / f"mlb_{pk}_{name}"
         s, body = http_get(f"{base}/{name}", token)
         if s != 200:
+            # 401/403 => token rejected. Touch the watchdog flag so the
+            # Mac refreshes our credentials within ~60s.
+            if s in (401, 403):
+                mark_token_expired(f"{name} HTTP {s} for pk={pk}")
             return {"ok": False, "error": f"{name} HTTP {s}"}
         target.write_bytes(body)
 
