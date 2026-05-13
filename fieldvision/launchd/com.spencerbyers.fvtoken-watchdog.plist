@@ -5,10 +5,15 @@
     <key>Label</key>
     <string>com.spencerbyers.fvtoken-watchdog</string>
 
+    <!-- The script MUST live outside ~/Documents/ — macOS TCC blocks launchd
+         from executing scripts inside Documents/Desktop/Downloads. The
+         canonical copy is in the repo; we keep an exec-safe mirror at
+         ~/fieldvision/scripts/refresh_token_watchdog.sh that's `cp`'d any
+         time the script changes. -->
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision/scripts/refresh_token_watchdog.sh</string>
+        <string>/Users/spencerbyers/fieldvision/scripts/refresh_token_watchdog.sh</string>
     </array>
 
     <!-- Poll every 60s. Each poll is one fast ssh check + (only when needed)
