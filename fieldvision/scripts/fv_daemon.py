@@ -170,16 +170,25 @@ def http_get(url: str, token: str, timeout: int = 30,
         "User-Agent": USER_AGENT,
     }
     delay = 1.0
-    for attempt in range(max_retries):
+    attempt = 0
+    while True:
         try:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 return r.status, r.read()
         except urllib.error.HTTPError as e:
-            if e.code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+            # 429 = rate limit: never give up, just wait it out.
+            if e.code == 429:
+                wait = float(e.headers.get("Retry-After") or delay)
+                time.sleep(min(wait + 0.1 * min(attempt, 50), 30))
+                delay = min(delay * 2, 30)
+                attempt += 1
+                continue
+            if e.code in (500, 502, 503, 504) and attempt < max_retries - 1:
                 wait = float(e.headers.get("Retry-After") or delay)
                 time.sleep(min(wait + 0.1 * attempt, 30))
                 delay = min(delay * 2, 30)
+                attempt += 1
                 continue
             try:
                 body = e.read()
@@ -190,9 +199,9 @@ def http_get(url: str, token: str, timeout: int = 30,
             if attempt < max_retries - 1:
                 time.sleep(delay)
                 delay = min(delay * 2, 30)
+                attempt += 1
                 continue
             raise
-    return 0, b""
 
 
 def scrape_game_once(game_pk: int, token: str) -> dict:
