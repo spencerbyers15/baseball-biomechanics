@@ -13,7 +13,11 @@
 
 set -uo pipefail
 
-REPO_ROOT="${REPO_ROOT:-/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision}"
+# REPO_ROOT must be a TCC-safe path (outside ~/Documents, ~/Desktop, ~/Downloads)
+# because launchd-spawned processes can't write into Documents on modern macOS.
+# The refresh_token_via_chrome.sh and our own log writes use this dir.
+REPO_ROOT="${REPO_ROOT:-/Users/spencerbyers/fieldvision}"
+REPO_GIT="${REPO_GIT:-/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision}"
 NELLIE_HOST="${NELLIE_HOST:-nellie}"
 NELLIE_STATE_DIR="${NELLIE_STATE_DIR:-/media/scratch/spencer/data/fieldvision/state}"
 NELLIE_TOKEN_PATH="${NELLIE_TOKEN_PATH:-/media/scratch/spencer/github/baseball-biomechanics/fieldvision/.fv_token.txt}"
@@ -23,6 +27,10 @@ LOG="$REPO_ROOT/state/watchdog.log"
 PROACTIVE_MAX_AGE_HOURS=4
 
 mkdir -p "$REPO_ROOT/state"
+# Mirror the fresh token back to the repo path as well so the repo-resident
+# scripts also see it. This is a best-effort write — if TCC blocks the
+# Documents write (which it can do for launchd-spawned processes) we just
+# skip it; Nellie still gets the fresh token via scp.
 
 log() { echo "[$(date '+%F %T')] $*" >> "$LOG"; }
 
@@ -62,8 +70,10 @@ fi
 
 log "trigger: $REASON"
 
-# Run the refresh
+# Run the refresh (writes the fresh token to $LOCAL_TOKEN at $REPO_ROOT)
 if REPO_ROOT="$REPO_ROOT" bash "$REPO_ROOT/scripts/refresh_token_via_chrome.sh" --force >> "$LOG" 2>&1; then
+  # Best-effort mirror to the repo path (may fail under TCC; that's fine)
+  cp "$LOCAL_TOKEN" "$REPO_GIT/.fv_token.txt" 2>/dev/null || true
   # Push to Nellie + clear the flag
   if scp "${SSH_OPTS[@]}" "$LOCAL_TOKEN" "$NELLIE_HOST:$NELLIE_TOKEN_PATH" >> "$LOG" 2>&1; then
     ssh "${SSH_OPTS[@]}" "$NELLIE_HOST" "rm -f '$NELLIE_FLAG'" >> "$LOG" 2>&1
