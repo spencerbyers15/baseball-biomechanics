@@ -41,10 +41,23 @@ def manifest_segment_count(pk: int) -> int | None:
         return None
 
 
+def _is_finalized_parquet(p: Path) -> bool:
+    if p.stat().st_size < 8:
+        return False
+    try:
+        with p.open("rb") as f:
+            f.seek(-4, 2)
+            return f.read(4) == b"PAR1"
+    except OSError:
+        return False
+
+
 def parquet_segment_count(pk: int) -> tuple[int, int]:
-    """(distinct_count, max_idx) across all actor_frames*.parquet for the game."""
-    files = sorted((DATA_DIR / str(pk)).glob("actor_frames*.parquet"))
-    files = [f for f in files if f.stat().st_size > 8]
+    """(distinct_count, max_idx) across all finalized actor_frames*.parquet."""
+    files = [
+        f for f in sorted((DATA_DIR / str(pk)).glob("actor_frames*.parquet"))
+        if _is_finalized_parquet(f)
+    ]
     if not files:
         return 0, -1
     files_sql = "[" + ", ".join(f"'{f.as_posix()}'" for f in files) + "]"

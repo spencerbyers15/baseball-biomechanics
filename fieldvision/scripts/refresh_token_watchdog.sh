@@ -70,4 +70,19 @@ fi
 
 log "trigger: $REASON"
 
-# Run the
+# Run the refresh (writes the fresh token to $LOCAL_TOKEN at $REPO_ROOT)
+if REPO_ROOT="$REPO_ROOT" bash "$REPO_ROOT/scripts/refresh_token_via_chrome.sh" --force >> "$LOG" 2>&1; then
+  # Best-effort mirror to the repo path (may fail under TCC; that's fine)
+  cp "$LOCAL_TOKEN" "$REPO_GIT/.fv_token.txt" 2>/dev/null || true
+  # Push to Nellie + clear the flag
+  if scp "${SSH_OPTS[@]}" "$LOCAL_TOKEN" "$NELLIE_HOST:$NELLIE_TOKEN_PATH" >> "$LOG" 2>&1; then
+    ssh "${SSH_OPTS[@]}" "$NELLIE_HOST" "rm -f '$NELLIE_FLAG'" >> "$LOG" 2>&1
+    log "refresh OK + synced to Nellie + flag cleared"
+  else
+    log "refresh OK but scp to Nellie FAILED — flag will be retried next tick"
+    exit 1
+  fi
+else
+  log "refresh FAILED — flag remains, will retry next tick"
+  exit 1
+fi
