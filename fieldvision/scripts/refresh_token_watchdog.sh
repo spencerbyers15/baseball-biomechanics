@@ -23,21 +23,13 @@ NELLIE_STATE_DIR="${NELLIE_STATE_DIR:-/media/scratch/spencer/data/fieldvision/st
 NELLIE_TOKEN_PATH="${NELLIE_TOKEN_PATH:-/media/scratch/spencer/github/baseball-biomechanics/fieldvision/.fv_token.txt}"
 NELLIE_FLAG="$NELLIE_STATE_DIR/token_expired.flag"
 LOCAL_TOKEN="$REPO_ROOT/.fv_token.txt"
-LOG="$REPO_ROOT/state/watchdog.log"
-PROACTIVE_MAX_AGE_HOURS=4
+PROACTIVE_MAX_AGE_HOURS=18
 
-mkdir -p "$REPO_ROOT/state"
-# Mirror the fresh token back to the repo path as well so the repo-resident
-# scripts also see it. This is a best-effort write — if TCC blocks the
-# Documents write (which it can do for launchd-spawned processes) we just
-# skip it; Nellie still gets the fresh token via scp.
-
-log() { echo "[$(date '+%F %T')] $*" >> "$LOG"; }
-
-# Trim log file if it gets huge (>5MB)
-if [ -f "$LOG" ] && [ "$(stat -f %z "$LOG" 2>/dev/null || echo 0)" -gt 5242880 ]; then
-  tail -n 1000 "$LOG" > "$LOG.tmp" && mv "$LOG.tmp" "$LOG"
-fi
+# Log to stdout — launchd captures via StandardOutPath, which is the only
+# write-permission we reliably have under launchd's sandbox. Trying to
+# `>> $REPO_ROOT/state/watchdog.log` directly raises "Operation not
+# permitted" even though the path is outside ~/Documents.
+log() { echo "[$(date '+%F %T')] $*"; }
 
 SSH_OPTS=(-o ConnectTimeout=5 -o BatchMode=yes -o StrictHostKeyChecking=accept-new)
 
@@ -71,12 +63,12 @@ fi
 log "trigger: $REASON"
 
 # Run the refresh (writes the fresh token to $LOCAL_TOKEN at $REPO_ROOT)
-if REPO_ROOT="$REPO_ROOT" bash "$REPO_ROOT/scripts/refresh_token_via_chrome.sh" --force >> "$LOG" 2>&1; then
+if REPO_ROOT="$REPO_ROOT" bash "$REPO_ROOT/scripts/refresh_token_via_chrome.sh" --force 2>&1; then
   # Best-effort mirror to the repo path (may fail under TCC; that's fine)
   cp "$LOCAL_TOKEN" "$REPO_GIT/.fv_token.txt" 2>/dev/null || true
   # Push to Nellie + clear the flag
-  if scp "${SSH_OPTS[@]}" "$LOCAL_TOKEN" "$NELLIE_HOST:$NELLIE_TOKEN_PATH" >> "$LOG" 2>&1; then
-    ssh "${SSH_OPTS[@]}" "$NELLIE_HOST" "rm -f '$NELLIE_FLAG'" >> "$LOG" 2>&1
+  if scp "${SSH_OPTS[@]}" "$LOCAL_TOKEN" "$NELLIE_HOST:$NELLIE_TOKEN_PATH" 2>&1; then
+    ssh "${SSH_OPTS[@]}" "$NELLIE_HOST" "rm -f '$NELLIE_FLAG'" 2>&1
     log "refresh OK + synced to Nellie + flag cleared"
   else
     log "refresh OK but scp to Nellie FAILED — flag will be retried next tick"
