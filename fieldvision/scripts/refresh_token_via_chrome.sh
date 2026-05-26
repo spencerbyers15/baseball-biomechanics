@@ -84,7 +84,13 @@ tell application "Google Chrome"
         make new tab at end of tabs of front window with properties {URL:"https://www.mlb.com"}
         return "CREATED"
     else
-        set URL of foundTab to "https://www.mlb.com"
+        -- DO NOT navigate the existing tab. Navigating via AppleScript
+        -- causes Chrome to grab focus / bounce in the dock, which steals
+        -- the user's attention. mlb.com's own Okta silent-refresh keeps
+        -- the JWT in localStorage fresh enough on its own as long as the
+        -- tab has been alive. If the resulting token is too stale, the
+        -- caller will fail JWT validation, exit non-zero, and the watchdog
+        -- will retry next tick.
         return "EXISTING"
     end if
 end tell
@@ -140,9 +146,11 @@ print(f"{hours_left:.2f}")
 PY
 ) || { log "ERROR: JWT validation failed"; exit 3; }
 
-# Step 6: write the token + clear expired flag
+# Step 6: write the token + clear expired flag.
+# TCC sometimes blocks the rm from launchd-spawned processes; swallow that
+# (the flag will get cleared by the next daemon poll or stays stale-but-harmless).
 echo "$TOKEN" > "$TOKEN_FILE"
-rm -f "$EXPIRED_FLAG"
+rm -f "$EXPIRED_FLAG" 2>/dev/null || true
 log "fresh token written ($(wc -c < "$TOKEN_FILE") bytes, ${HOURS_LEFT}h remaining)"
 
 # Step 7: if we created the tab, close it
