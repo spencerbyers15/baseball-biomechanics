@@ -78,19 +78,18 @@ tell application "Google Chrome"
         if foundTab is not missing value then exit repeat
     end repeat
     if foundTab is missing value then
-        if (count of windows) is 0 then
-            make new window
-        end if
-        make new tab at end of tabs of front window with properties {URL:"https://www.mlb.com"}
-        return "CREATED"
+        -- DO NOT create a new tab. `make new tab` forces Chrome to the
+        -- foreground regardless of any AppleScript options, which steals
+        -- the user's focus. Instead, we report MISSING and exit non-zero;
+        -- the user just needs to keep an mlb.com tab (pinned) open. If
+        -- they close it, the daemon will eventually 401 and require manual
+        -- intervention to re-open mlb.com — but never any pop-up.
+        return "MISSING"
     else
-        -- DO NOT navigate the existing tab. Navigating via AppleScript
-        -- causes Chrome to grab focus / bounce in the dock, which steals
-        -- the user's attention. mlb.com's own Okta silent-refresh keeps
-        -- the JWT in localStorage fresh enough on its own as long as the
-        -- tab has been alive. If the resulting token is too stale, the
-        -- caller will fail JWT validation, exit non-zero, and the watchdog
-        -- will retry next tick.
+        -- DO NOT navigate the existing tab either. Navigating via
+        -- AppleScript causes Chrome to bounce in the dock / take focus.
+        -- mlb.com's Okta silent-refresh keeps the JWT in localStorage
+        -- fresh on its own as long as the tab has been alive.
         return "EXISTING"
     end if
 end tell
@@ -98,6 +97,13 @@ OSA
 TAB_STATE=$(osascript "$TAB_SCRIPT" 2>&1)
 rm -f "$TAB_SCRIPT"
 log "tab state: $TAB_STATE"
+
+# Bail out silently (no pop) if there's no mlb.com tab to read from.
+# User can keep one pinned to make refreshes invisible.
+if [ "$TAB_STATE" = "MISSING" ]; then
+    log "no mlb.com tab open — skipping refresh (keep one pinned to avoid this)"
+    exit 4
+fi
 
 # Step 3: wait for Okta silent-refresh to land in localStorage
 sleep 8
