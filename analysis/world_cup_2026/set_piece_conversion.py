@@ -16,7 +16,8 @@ from matplotlib.patches import FancyBboxPatch, Rectangle
 ROWS = [
     ("Penalty kicks", 8 / 11 * 100, "8 of 11 scored"),
     ("Corner kicks", 21.5 / 630 * 100, "~22 goals est. / ~630 corners"),
-    ("Free kicks", 12.9 / 1593 * 100, "~13 goals est. / ~1,593 free kicks"),
+    ("Direct free kicks", 3 / 100 * 100,
+     "wall set, shot at goal — 3 goals / ~100 est. attempts"),
 ]
 
 SURFACE = "#fcfcfb"
@@ -91,13 +92,13 @@ ax.text(0, 1.06, "Group stage: 72 matches, 215 goals (Jun 11–27, 2026). "
         transform=ax.transAxes, fontsize=9.5, color=INK_2)
 
 fig.text(0.055, 0.015,
-         "Corner and free-kick goal totals estimated from ESPN's first-100-goals breakdown "
-         "(10 corner, 6 free-kick goals per 100) scaled to 215 goals.\n"
-         "Denominators: 8.75 corners/match (PerformanceOdds); 1,604 fouls minus 11 penalties "
-         "= free kicks awarded (FIFA). Penalties: 8/11 (Oddspedia).",
+         "Corner goals est. from ESPN's first-100-goals breakdown scaled to 215 goals; "
+         "corners: 8.75/match (PerformanceOdds). Penalties: 8/11 (Oddspedia).\n"
+         "Direct FK goals: Saliba, Lo Celso, Messi. Attempts unpublished; ~100 est. from "
+         "the 1.2–1.6 shots/match norm of recent World Cups.",
          fontsize=7.5, color=MUTED, va="bottom")
 
-fig.subplots_adjust(left=0.13, right=0.97, top=0.82, bottom=0.20)
+fig.subplots_adjust(left=0.165, right=0.97, top=0.82, bottom=0.20)
 fig.savefig("analysis/world_cup_2026/set_piece_conversion.png",
             facecolor=SURFACE, dpi=200)
 print("wrote analysis/world_cup_2026/set_piece_conversion.png")

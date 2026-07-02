@@ -13,7 +13,7 @@ round of 32 is in progress).
 |---|---|---|---|
 | Penalty kicks | **72.7%** | 8 scored | 11 awarded (in-game, excl. shootouts) |
 | Corner kicks | **~3.4%** | ~22 goals (est.) | ~630 corners (8.75/match × 72) |
-| Free kicks | **~0.8%** | ~13 goals (est.) | ~1,593 awarded (1,604 fouls − 11 penalties) |
+| Direct free kicks (wall set, shot at goal) | **~3%** | 3 goals (documented) | ~100 attempts (est., see below) |
 
 Regenerate the plot with:
 
@@ -33,15 +33,18 @@ python analysis/world_cup_2026/set_piece_conversion.py
   Lo Celso and Messi vs Jordan) are consistent with this.
 - **Corners taken**: PerformanceOdds reports 8.75 corners per match across the
   tournament; 72 matches → ~630 corners.
-- **Free kicks taken** is approximated as free kicks awarded: FIFA's official
-  group-stage recap reports 1,604 fouls (22.3 per match); subtracting the 11
-  penalties leaves ~1,593 non-penalty free kicks. This is *low* by historical
-  standards — Qatar 2022's group stage averaged ~24 fouls per game, itself the
-  fewest since records began (Sky Sports). A free kick is awarded anywhere on
-  the pitch, and the large majority are midfield/defensive-half fouls nowhere
-  near goal, which is why the per-free-kick conversion rate is so small.
-  Counting only *direct free-kick shots* would give a higher rate, but attempt
-  counts aren't published.
+- **Direct free kicks** are the "wall lined up, shooting at goal" free kicks —
+  not the ~1,600 free kicks awarded anywhere on the pitch (FIFA reports 1,604
+  fouls / 22.3 per match in the group stage, in line with Qatar 2022's ~24 per
+  game).
+  - The **3 goals are documented**: Nathan Saliba (Canada vs Qatar),
+    Giovani Lo Celso and Lionel Messi (both Argentina vs Jordan).
+  - **Attempt counts are not published** by FIFA, Opta (publicly), or any
+    major outlet. The ~100 denominator is an estimate from the norm of recent
+    World Cups: roughly 1.2–1.6 direct free-kick shots per match (consistent
+    with Russia 2018's 6 direct-FK goals and Qatar 2022's 3 at a historical
+    ~5–7% conversion), × 72 matches → ~85–115 attempts. The resulting rate is
+    ~2.5–3.5%; the chart shows the ~3% midpoint.
 
 ## Sources
 
@@ -51,5 +54,9 @@ python analysis/world_cup_2026/set_piece_conversion.py
 - FIFA (inside.fifa.com) — "Records tumble as FIFA World Cup 2026 Group Stage
   sets new benchmark" (215 goals; 1,604 fouls / 22.3 per match — official)
 - Sky Sports — Qatar 2022 group-stage trends (~24 fouls per game, for comparison)
+- Pulse Sports / theScore / Fox Sports — the three 2026 direct free-kick goals
+  (Saliba; Lo Celso and Messi vs Jordan)
+- Set-play research on Russia 2018 (6 direct-FK goals) and Qatar 2022 reports
+  (3 direct-FK goals) — basis for the attempts-per-match norm
 - PerformanceOdds — World Cup 2026 corner trends (8.75 corners per match)
 - Fox Sports — "All 215 World Cup Group Stage Goals" (goal total)
