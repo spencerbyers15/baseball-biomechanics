@@ -24,6 +24,11 @@ from pydantic import BaseModel, ValidationError
 DEFAULT_MODEL = "claude-sonnet-4-6"
 
 _JSON_BLOCK_RE = re.compile(r"```json\s*(.*?)\s*```", re.DOTALL)
+_WORD_RE = re.compile(r"[a-z]+(?:-[a-z]+)*")
+
+
+def _mock_tokenize(text: str) -> list[str]:
+    return _WORD_RE.findall(text.lower())
 
 
 def approx_tokens(text: str) -> int:
@@ -66,18 +71,40 @@ class CallLogger:
 
 
 class LLMClient:
-    """Base client. Subclasses implement _complete(prompt, system, ...)."""
+    """Base client. Subclasses implement _complete(prompt, system, ...).
+
+    Transient failures (per _should_retry) are retried with exponential
+    backoff (2s, 4s, 8s, ...) up to max_retries times.
+    """
 
     def __init__(self, model: str = DEFAULT_MODEL, log_path: Path | None = None,
                  max_retries: int = 4):
         self.model = model
         self.logger = CallLogger(log_path)
         self.max_retries = max_retries
+        self._sleep = time.sleep  # injectable for tests
+
+    def _should_retry(self, exc: Exception) -> bool:
+        return isinstance(exc, (ConnectionError, TimeoutError))
+
+    def _complete_with_retry(self, prompt: str, system: str, max_tokens: int,
+                             temperature: float) -> tuple[str, int, int]:
+        delay = 2.0
+        for attempt in range(self.max_retries + 1):
+            try:
+                return self._complete(prompt, system, max_tokens, temperature)
+            except Exception as e:
+                if attempt >= self.max_retries or not self._should_retry(e):
+                    raise
+                self._sleep(delay)
+                delay *= 2
+        raise RuntimeError("unreachable")
 
     def complete(self, prompt: str, system: str = "", max_tokens: int = 2048,
                  temperature: float = 0.7, task_id: str = "generic") -> str:
         start = time.monotonic()
-        text, in_tok, out_tok = self._complete(prompt, system, max_tokens, temperature)
+        text, in_tok, out_tok = self._complete_with_retry(
+            prompt, system, max_tokens, temperature)
         self.logger.log({
             "ts": time.time(),
             "task_id": task_id,
@@ -124,29 +151,25 @@ class AnthropicClient(LLMClient):
         self._client = anthropic.Anthropic()
         self._anthropic = anthropic
 
+    def _should_retry(self, exc: Exception) -> bool:
+        if isinstance(exc, self._anthropic.APIConnectionError):
+            return True
+        if isinstance(exc, (self._anthropic.APIStatusError,
+                            self._anthropic.RateLimitError)):
+            return getattr(exc, "status_code", None) in (408, 429, 500, 502, 503, 529)
+        return super()._should_retry(exc)
+
     def _complete(self, prompt: str, system: str, max_tokens: int,
                   temperature: float) -> tuple[str, int, int]:
-        delay = 2.0
-        for attempt in range(self.max_retries + 1):
-            try:
-                kwargs: dict[str, Any] = dict(
-                    model=self.model, max_tokens=max_tokens, temperature=temperature,
-                    messages=[{"role": "user", "content": prompt}],
-                )
-                if system:
-                    kwargs["system"] = system
-                resp = self._client.messages.create(**kwargs)
-                text = "".join(b.text for b in resp.content if b.type == "text")
-                return text, resp.usage.input_tokens, resp.usage.output_tokens
-            except (self._anthropic.APIConnectionError, self._anthropic.APIStatusError,
-                    self._anthropic.RateLimitError) as e:
-                status = getattr(e, "status_code", None)
-                retryable = status is None or status in (408, 429, 500, 502, 503, 529)
-                if attempt >= self.max_retries or not retryable:
-                    raise
-                time.sleep(delay)
-                delay *= 2
-        raise RuntimeError("unreachable")
+        kwargs: dict[str, Any] = dict(
+            model=self.model, max_tokens=max_tokens, temperature=temperature,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        if system:
+            kwargs["system"] = system
+        resp = self._client.messages.create(**kwargs)
+        text = "".join(b.text for b in resp.content if b.type == "text")
+        return text, resp.usage.input_tokens, resp.usage.output_tokens
 
 
 class MockLLMClient(LLMClient):
@@ -222,22 +245,51 @@ class MockLLMClient(LLMClient):
 
     def _handle_give_clue(self, data: dict, rng: random.Random):
         team = [w for w in data.get("team_words", [])]
-        n = min(2, len(team))
-        targets = team[:n]
-        # prefer a binding-word candidate surfaced in the memory payload
-        candidates = data.get("candidate_clue_words") or []
         board = {w.lower() for w in data.get("board_words", [])}
-        clue = next((c for c in candidates if c.lower() not in board), None)
-        if clue is None:
-            pool = [w for w in ("gondola", "zeppelin", "thimble", "kazoo", "monocle")
-                    if w not in board]
-            clue = rng.choice(pool)
-        return {"clue_word": clue, "number": n, "intended_targets": targets,
-                "why_partner_will_get_it": "mock: shared episode",
-                "why_eavesdropper_wont": "mock: private association"}
+        # prefer a retrieval candidate (graph condition) covering >= 2 targets
+        for cand in data.get("candidate_clue_words") or []:
+            covered = [t for t in cand.get("covered_targets", []) if t in team]
+            if cand["word"].lower() not in board and len(covered) >= 2:
+                return {"clue_word": cand["word"], "number": len(covered),
+                        "intended_targets": covered,
+                        "why_partner_will_get_it": "mock: shared planted episode",
+                        "why_eavesdropper_wont": "mock: private association"}
+        # otherwise scan memory text for a word that co-occurs with >= 2 team
+        # words on one line (finds plants in RAW memory)
+        mem = data.get("memory_text", "")
+        for line in mem.splitlines():
+            tokens = _mock_tokenize(line)
+            covered = [t for t in team if t in tokens]
+            if len(covered) >= 2:
+                from ..engine.wordlist import BINDING_WORD_POOL
+                binding = set(BINDING_WORD_POOL)
+                clue = next((w for w in tokens if w in binding and w not in board),
+                            None) or next((w for w in tokens
+                                           if w not in board and len(w) > 3), None)
+                if clue:
+                    return {"clue_word": clue, "number": min(2, len(covered)),
+                            "intended_targets": covered[:2],
+                            "why_partner_will_get_it": "mock: co-mentioned in history",
+                            "why_eavesdropper_wont": "mock: not a public association"}
+        n = min(2, len(team))
+        pool = [w for w in ("gondola", "zeppelin", "thimble", "kazoo", "monocle")
+                if w not in board]
+        return {"clue_word": rng.choice(pool), "number": n,
+                "intended_targets": team[:n],
+                "why_partner_will_get_it": "mock: generic",
+                "why_eavesdropper_wont": "mock: generic"}
 
     def _handle_guess(self, data: dict, rng: random.Random):
         words = [w for w in data.get("board_words", [])]
         k = data.get("number", 1)
-        rng.shuffle(words)
-        return {"guesses": words[:k], "reasoning": "mock guess"}
+        clue = (data.get("clue_word") or "").lower()
+        picks: list[str] = []
+        # a partner with memory scans it for lines mentioning the clue word
+        # and recovers co-mentioned board words; an eavesdropper has none
+        for line in data.get("memory_text", "").splitlines():
+            tokens = _mock_tokenize(line)
+            if clue and clue in tokens:
+                picks.extend(w for w in words if w in tokens and w not in picks)
+        rest = [w for w in words if w not in picks]
+        rng.shuffle(rest)
+        return {"guesses": (picks + rest)[:k], "reasoning": "mock guess"}
