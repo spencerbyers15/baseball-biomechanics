@@ -92,3 +92,6 @@ fieldvision/scheduler.log
 fieldvision/.fv_token.txt
 fieldvision/.fv_captures/
 fieldvision/.mlb_profile/
+
+# codenames_eval run outputs (results, reports, LLM call logs)
+runs/
