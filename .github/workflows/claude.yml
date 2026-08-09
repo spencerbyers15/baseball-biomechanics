@@ -1,0 +1,36 @@
+name: Claude (interactive @claude)
+
+# Mention @claude in a PR/issue comment or a PR review comment and Claude will
+# respond — answer questions, or make changes and push them to the PR branch.
+# This is the "go back and autofix" loop for when you want to steer manually.
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  id-token: write   # OIDC — required by claude-code-action to mint its token
+
+jobs:
+  claude:
+    # Only run when someone actually mentions @claude (and it isn't the bot).
+    if: >-
+      (github.event.comment != null && contains(github.event.comment.body, '@claude') && github.actor != 'claude[bot]') ||
+      (github.event.review != null && contains(github.event.review.body, '@claude') && github.actor != 'claude[bot]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # No prompt: the action runs in interactive mode and responds to the
+          # @claude mention that triggered it.

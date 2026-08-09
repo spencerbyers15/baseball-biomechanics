@@ -1,0 +1,83 @@
+name: Claude Auto Review & Merge
+
+# Full-auto loop: on every PR, Claude reviews the diff, applies fixes by
+# committing to the PR branch, and squash-merges once it's clean and checks
+# pass. Safety rails:
+#   - skips drafts
+#   - skips runs triggered by Claude's OWN fix commits (prevents loops)
+#   - concurrency-cancels superseded runs per PR
+#   - merges ONLY when Claude judges the PR clean (it leaves a comment and stops
+#     if it can't safely resolve something)
+# Ported from fantasy-baseball-hub 2026-08-09; prompt adapted for this repo.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write          # commit fixes + merge
+  pull-requests: write     # comment + merge
+  issues: write            # comment
+  checks: read             # read status checks before merging
+  id-token: write          # OIDC — required by claude-code-action to mint its token
+
+concurrency:
+  group: claude-auto-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Skip drafts and self-triggered runs from Claude's own fix commits.
+    # (Adjust the actor name below if your installed app bot login differs —
+    # check the "actor" of a fix-commit run after the first cycle.)
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.actor != 'claude[bot]' &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            You are the automated code reviewer and merger for pull request
+            #${{ github.event.pull_request.number }} in ${{ github.repository }}
+            (base branch: ${{ github.event.pull_request.base.ref }}).
+
+            Do the following, in order:
+            1. Review ONLY the PR diff (`git diff origin/${{ github.event.pull_request.base.ref }}...HEAD`)
+               for correctness bugs, security issues, and clear quality problems.
+               Skip nitpicks. This is a Python data-capture + analysis repo for
+               MLB Hawk-Eye skeletal tracking — read fieldvision/CLAUDE.md for
+               conventions. Repo-specific rules to enforce:
+               - The MLB JWT is a secret: never written to the NAS
+                 (world-readable), never committed, never logged.
+               - The mannequin pipeline version must never be hardcoded — it is
+                 resolved per game via src/fieldvision/mlb_api.py.
+               - Capture resume must stay gap-aware (set-difference vs manifest
+                 isGap records), never a max+1 high-water mark.
+               - Long-running process logs go to Nellie's LOCAL disk, not CIFS.
+               - CI here has NO MLB token, NO NAS, NO network access to
+                 fieldvision-hls: review statically; never attempt captures or
+                 add tests that need live MLB endpoints or /media paths.
+            2. Post ONE concise review comment on the PR summarizing what you found
+               (or "LGTM" if clean).
+            3. If you found fixable issues, fix them: edit the files, then
+               `git add -A && git commit` with a clear message and `git push` to the
+               PR branch. Keep the fix focused on what you flagged.
+            4. Decide whether to merge:
+               - If the PR is clean (originally, or after your fixes) AND no required
+                 status check is failing, squash-merge it:
+                 `gh pr merge ${{ github.event.pull_request.number }} --squash --delete-branch`
+                 (try `--auto` as well if direct merge is blocked by a pending check).
+               - If you could NOT safely resolve a real problem, do NOT merge —
+                 leave it open and explain why in your comment.
+            Be decisive but conservative: never merge code you believe is broken.
+          # Give Claude the tools it needs in CI. GITHUB_TOKEN is provided to the
+          # action automatically for gh/PR operations.
+          claude_args: |
+            --allowedTools "Bash,Edit,Write,Read,Grep,Glob"
