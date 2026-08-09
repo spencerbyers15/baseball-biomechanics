@@ -21,7 +21,10 @@ mountpoint -q /media/datasets || exit 1
 
 tmux has-session -t "$SESSION" 2>/dev/null && exit 0
 
-mkdir -p "$FV_ROOT/state" "$FV_DATA"
+# Log to LOCAL disk, not the NAS: a tee/redirect writing to CIFS can die
+# under heavy NAS I/O (soft mount, EIO) and take the daemon down with a
+# silent SIGPIPE — observed 2026-08-09.
+mkdir -p "$FV_ROOT/state" "$FV_DATA" /home/spencer/logs
 tmux new-session -d -s "$SESSION" \
   "cd $REPO && \
    FV_TOKEN_FILE=/home/spencer/.fv_token.txt \
@@ -30,4 +33,4 @@ tmux new-session -d -s "$SESSION" \
    FV_STATE_DIR=$FV_ROOT/state \
    /home/spencer/venvs/fieldvision/bin/python3 scripts/fv_autopilot.py \
      --workers 8 --delete-bins ${FV_AUTOPILOT_ARGS:-} \
-     >> $FV_ROOT/state/autopilot.log 2>&1"
+     >> /home/spencer/logs/autopilot.log 2>&1"
