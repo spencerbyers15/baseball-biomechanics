@@ -31,6 +31,8 @@ import urllib.request
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import requests
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from fieldvision.mlb_api import game_base, resolve_manifest
@@ -66,6 +68,24 @@ def log(msg: str) -> None:
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+# One requests.Session per process, created lazily AFTER fork (keyed by
+# pid) so ProcessPool workers never share a TCP connection. Keep-alive
+# matters: a fresh TLS handshake per segment costs ~0.2s (measured mean
+# 0.488s/GET via urllib vs 0.292s with a reused Session, Nellie 2026-08-09).
+# MLB's limiter is a per-connection burst bucket (~85 rapid requests), so
+# one paced connection per worker is exactly the safe shape.
+_sessions: dict[int, requests.Session] = {}
+
+
+def _session() -> requests.Session:
+    pid = os.getpid()
+    s = _sessions.get(pid)
+    if s is None:
+        s = requests.Session()
+        _sessions[pid] = s
+    return s
+
+
 def http_get(url: str, token: str | None = None,
              timeout: int = 30, max_retries: int = 5) -> tuple[int, bytes]:
     headers = {"User-Agent": USER_AGENT}
@@ -80,40 +100,34 @@ def http_get(url: str, token: str | None = None,
     attempt = 0
     while True:
         try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=timeout) as r:
-                return r.status, r.read()
-        except urllib.error.HTTPError as e:
-            # 429 = rate limit: never give up, just wait it out. Retry-After
-            # header is authoritative when present; otherwise exponential
-            # backoff capped at 30s. Caller wants every segment.
-            if e.code == 429:
-                wait = float(e.headers.get("Retry-After") or delay)
-                time.sleep(min(wait + 0.1 * min(attempt, 50), 30))
-                delay = min(delay * 2, 30)
-                attempt += 1
-                continue
-            # 5xx errors are usually transient too, but might indicate a
-            # genuinely broken segment. Keep the bounded retry.
-            if e.code in (500, 502, 503, 504) and attempt < max_retries - 1:
-                wait = float(e.headers.get("Retry-After") or delay)
-                time.sleep(min(wait + 0.1 * attempt, 30))
-                delay = min(delay * 2, 30)
-                attempt += 1
-                continue
-            try:
-                body = e.read()
-            except Exception:
-                body = b""
-            return e.code, body
+            r = _session().get(url, headers=headers, timeout=timeout)
         except Exception:
             if attempt < max_retries - 1:
                 time.sleep(delay)
                 delay = min(delay * 2, 30)
                 attempt += 1
+                # A broken connection can poison the pool — start fresh.
+                _sessions.pop(os.getpid(), None)
                 continue
             raise
-    return 0, b""
+        # 429 = rate limit: never give up, just wait it out. Retry-After
+        # header is authoritative when present; otherwise exponential
+        # backoff capped at 30s. Caller wants every segment.
+        if r.status_code == 429:
+            wait = float(r.headers.get("Retry-After") or delay)
+            time.sleep(min(wait + 0.1 * min(attempt, 50), 30))
+            delay = min(delay * 2, 30)
+            attempt += 1
+            continue
+        # 5xx errors are usually transient too, but might indicate a
+        # genuinely broken segment. Keep the bounded retry.
+        if r.status_code in (500, 502, 503, 504) and attempt < max_retries - 1:
+            wait = float(r.headers.get("Retry-After") or delay)
+            time.sleep(min(wait + 0.1 * attempt, 30))
+            delay = min(delay * 2, 30)
+            attempt += 1
+            continue
+        return r.status_code, r.content
 
 
 def fetch_team_games(team_id: int, start: str, end: str) -> list[dict]:
