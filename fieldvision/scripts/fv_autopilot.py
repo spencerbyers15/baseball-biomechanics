@@ -51,6 +51,8 @@ TOKEN_FILE = Path(os.environ.get("FV_TOKEN_FILE", REPO_ROOT / ".fv_token.txt"))
 BACKLOG_START = os.environ.get("FV_BACKLOG_START", "2026-05-20")
 
 TICK_S = 60
+LIVE_PASS_S = 300  # per-game gap between live passes; each resume pass with
+                   # new data writes a suffixed parquet, so don't over-tick
 SCHEDULE_REFRESH_S = 600
 BACKLOG_REFRESH_S = 6 * 3600
 
@@ -141,6 +143,7 @@ def main():
     sched_at = backlog_at = 0.0
     inflight: dict[int, tuple[Future, str]] = {}  # pk -> (future, kind)
     live_quiet: dict[int, int] = {}  # pk -> consecutive no-new passes while Final
+    last_live_pass: dict[int, float] = {}  # pk -> monotonic time of last submit
 
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
         while True:
@@ -206,6 +209,9 @@ def main():
             for pk in live_pks + closing:
                 if pk in inflight or len(inflight) >= args.workers:
                     continue
+                if time.monotonic() - last_live_pass.get(pk, 0) < LIVE_PASS_S:
+                    continue
+                last_live_pass[pk] = time.monotonic()
                 inflight[pk] = (pool.submit(capture_pass, pk, args.delete_bins),
                                 "live")
 
