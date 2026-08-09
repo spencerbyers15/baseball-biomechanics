@@ -21,7 +21,7 @@ and waits for a fresh token instead of dying.
 
 Usage (on Nellie):
   FV_TOKEN_FILE=/home/spencer/.fv_token.txt \
-  FV_DATA_DIR=/media/scratch/spencer/fieldvision/data \
+  FV_DATA_DIR=/media/datasets/spencer/fieldvision/data \
   FV_SAMPLES_DIR=/media/scratch/spencer/fieldvision/samples \
   FV_STATE_DIR=/media/scratch/spencer/fieldvision/state \
   python3 scripts/fv_backfill.py --start 2026-05-20 --end 2026-08-08 \

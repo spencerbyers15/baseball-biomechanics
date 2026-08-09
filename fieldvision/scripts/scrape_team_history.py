@@ -191,7 +191,7 @@ def scrape_one_game(pk: int, token: str, delete_bins: bool,
 
     manifest = json.loads(manifest_body)
     n_segments = len(manifest.get("records", []))
-    log(f"  manifest: {n_segments} segments, status={manifest.get('status')}")
+    log(f"  pk={pk} manifest: {n_segments} segments (v{version}), status={manifest.get('status')}")
 
     # Resume: skip segments already in actor_frames.parquet. If there's
     # existing data, write new segments to a suffixed file so pyarrow's
@@ -203,7 +203,7 @@ def scrape_one_game(pk: int, token: str, delete_bins: bool,
     metadata = json.loads((out_dir / f"mlb_{pk}_metadata.json").read_text())
     labels = json.loads((out_dir / f"mlb_{pk}_labels.json").read_text())
     labels_dict = store.write_lookups_from_metadata(metadata, labels)
-    log(f"  ingest range: segments {last_in_store + 1}..{n_segments - 1}  ({len(new_indices)} to fetch)")
+    log(f"  pk={pk} ingest range: segments {last_in_store + 1}..{n_segments - 1}  ({len(new_indices)} to fetch)")
 
     fetched = 0
     failed = 0
@@ -234,7 +234,7 @@ def scrape_one_game(pk: int, token: str, delete_bins: bool,
                 elapsed = time.monotonic() - t0
                 rate = fetched / max(elapsed, 0.1)
                 eta = (len(new_indices) - fetched) / max(rate, 0.1)
-                log(f"    {fetched}/{len(new_indices)}  ({rate:.1f} seg/s, eta {eta:.0f}s)")
+                log(f"    pk={pk} {fetched}/{len(new_indices)}  ({rate:.1f} seg/s, eta {eta:.0f}s)")
             time.sleep(float(os.environ.get("FV_SLEEP", "0.1")))
     finally:
         store.finalize()
@@ -251,7 +251,12 @@ def scrape_one_game(pk: int, token: str, delete_bins: bool,
         except OSError:
             pass
 
-    return {"ok": True, "fetched": fetched, "failed": failed, "total": n_segments}
+    elapsed = time.monotonic() - t0
+    log(f"  pk={pk} game done: {fetched} fetched, {failed} failed, "
+        f"{n_segments} total in {elapsed / 60:.1f} min "
+        f"({fetched / max(elapsed, 0.1):.2f} seg/s)")
+    return {"ok": True, "fetched": fetched, "failed": failed,
+            "total": n_segments, "elapsed_s": round(elapsed, 1)}
 
 
 def main():

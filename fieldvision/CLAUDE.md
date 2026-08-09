@@ -10,10 +10,13 @@ Capture now runs on **Nellie** (256 cores, BU IP — verified served by
 fieldvision-hls), writing **Parquet** (not SQLite) to the **NAS**:
 
 - Repo clone: `/media/scratch/spencer/github/baseball-biomechanics`
-- Data: `/media/scratch/spencer/fieldvision/{data,samples,state}` —
-  `data/<gamePk>/actor_frames.parquet` etc. (412-game Apr 14–May 19 corpus,
-  1.6 TB, lives here too; the 41-game SQLite-era set is under
-  `legacy_sqlite/`)
+- **Raw data → the `datasets` share** (Spencer's convention: ALL raw-data
+  datasets for the project live under `/media/datasets/spencer/`):
+  `/media/datasets/spencer/fieldvision/data/<gamePk>/actor_frames.parquet`
+  etc. (412-game Apr 14–May 19 corpus, 1.6 TB; the 41-game SQLite-era set
+  is in `legacy_sqlite/` beside it; README.md there describes the layout)
+- Transient samples + operational state stay on scratch:
+  `/media/scratch/spencer/fieldvision/{samples,state}`
 - Token: `/home/spencer/.fv_token.txt` (private home — NEVER on the NAS,
   it's world-readable). Point `FV_TOKEN_FILE` at it.
 - Pipeline version is **resolved dynamically** per game
