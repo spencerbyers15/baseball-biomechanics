@@ -19,8 +19,8 @@ set -uo pipefail
 REPO_ROOT="${REPO_ROOT:-/Users/spencerbyers/fieldvision}"
 REPO_GIT="${REPO_GIT:-/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision}"
 NELLIE_HOST="${NELLIE_HOST:-nellie}"
-NELLIE_STATE_DIR="${NELLIE_STATE_DIR:-/media/scratch/spencer/data/fieldvision/state}"
-NELLIE_TOKEN_PATH="${NELLIE_TOKEN_PATH:-/media/scratch/spencer/github/baseball-biomechanics/fieldvision/.fv_token.txt}"
+NELLIE_STATE_DIR="${NELLIE_STATE_DIR:-/media/scratch/spencer/fieldvision/state}"
+NELLIE_TOKEN_PATH="${NELLIE_TOKEN_PATH:-/home/spencer/.fv_token.txt}"  # private home, NOT the world-readable NAS
 NELLIE_FLAG="$NELLIE_STATE_DIR/token_expired.flag"
 LOCAL_TOKEN="$REPO_ROOT/.fv_token.txt"
 PROACTIVE_MAX_AGE_HOURS=18

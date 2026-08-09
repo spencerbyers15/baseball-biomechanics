@@ -33,6 +33,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from fieldvision.mlb_api import game_base, resolve_manifest
 from fieldvision.storage import (_actor_frame_insert_sql, ingest_segment,
                                  load_lookup_tables, open_game_db,
                                  open_registry, transaction, update_registry)
@@ -44,7 +45,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = Path(os.environ.get("FV_SAMPLES_DIR", REPO_ROOT / "samples"))
 DATA_DIR = Path(os.environ.get("FV_DATA_DIR", REPO_ROOT / "data"))
 STATE_DIR = Path(os.environ.get("FV_STATE_DIR", REPO_ROOT / "state"))
-TOKEN_FILE = REPO_ROOT / ".fv_token.txt"
+TOKEN_FILE = Path(os.environ.get("FV_TOKEN_FILE", REPO_ROOT / ".fv_token.txt"))
 
 
 def mark_token_expired(reason: str) -> None:
@@ -140,41 +141,55 @@ def fetch_team_games(team_id: int, start: str, end: str) -> list[dict]:
     return games
 
 
-def probe_availability(pk: int, token: str) -> int | None:
-    """Returns segment count if game is available, None if 404."""
-    url = f"https://fieldvision-hls.mlbinfra.com/mannequin/{pk}/1.6.2/manifest.json"
-    s, body = http_get(url, token, timeout=10, max_retries=2)
-    if s == 200:
+def probe_availability(pk: int, token: str) -> dict | None:
+    """Returns {"n_segments", "version"} if the game is available, None if
+    expired (404 at every known pipeline version)."""
+    version, s, body = resolve_manifest(
+        pk, lambda u: http_get(u, token, timeout=10, max_retries=2))
+    if s == 200 and version:
         try:
-            return len(json.loads(body).get("records", []))
+            return {"n_segments": len(json.loads(body).get("records", [])),
+                    "version": version}
         except Exception:
             return None
     return None
 
 
-def scrape_one_game(pk: int, token: str, delete_bins: bool) -> dict:
+def scrape_one_game(pk: int, token: str, delete_bins: bool,
+                    version: str | None = None) -> dict:
     """Download all segments for a game and ingest into per-game Parquet."""
     from fieldvision.storage_parquet import (
         ParquetGameStore, ingest_segment_parquet, max_segment_idx_for_game,
     )
 
-    base = f"https://fieldvision-hls.mlbinfra.com/mannequin/{pk}/1.6.2"
     out_dir = SAMPLES_DIR / f"binary_capture_{pk}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Manifest + small JSON metadata
-    for name in ("manifest.json", "metadata.json", "labels.json"):
+    # Manifest (resolving the pipeline version unless the caller already
+    # knows it from probe_availability) + small JSON metadata
+    if version is None:
+        version, s, manifest_body = resolve_manifest(
+            pk, lambda u: http_get(u, token))
+    else:
+        s, manifest_body = http_get(f"{game_base(pk, version)}/manifest.json", token)
+    if s != 200 or version is None:
+        # 401/403 => token rejected. Touch the watchdog flag so the
+        # Mac refreshes our credentials within ~60s.
+        if s in (401, 403):
+            mark_token_expired(f"manifest HTTP {s} for pk={pk}")
+        return {"ok": False, "error": f"manifest HTTP {s}"}
+    base = game_base(pk, version)
+    (out_dir / f"mlb_{pk}_manifest.json").write_bytes(manifest_body)
+    for name in ("metadata.json", "labels.json"):
         target = out_dir / f"mlb_{pk}_{name}"
         s, body = http_get(f"{base}/{name}", token)
         if s != 200:
-            # 401/403 => token rejected. Touch the watchdog flag so the
-            # Mac refreshes our credentials within ~60s.
             if s in (401, 403):
                 mark_token_expired(f"{name} HTTP {s} for pk={pk}")
             return {"ok": False, "error": f"{name} HTTP {s}"}
         target.write_bytes(body)
 
-    manifest = json.loads((out_dir / f"mlb_{pk}_manifest.json").read_text())
+    manifest = json.loads(manifest_body)
     n_segments = len(manifest.get("records", []))
     log(f"  manifest: {n_segments} segments, status={manifest.get('status')}")
 
@@ -275,10 +290,11 @@ def main():
     available = []
     unavailable = []
     for g in final_games:
-        n = probe_availability(g["pk"], token)
-        if n is not None:
-            log(f"  ✓ {g['date']}  pk={g['pk']}  {g['away']} @ {g['home']}  {n} seg")
-            available.append({**g, "n_segments": n})
+        info = probe_availability(g["pk"], token)
+        if info is not None:
+            log(f"  ✓ {g['date']}  pk={g['pk']}  {g['away']} @ {g['home']}  "
+                f"{info['n_segments']} seg (v{info['version']})")
+            available.append({**g, **info})
         else:
             log(f"  ✗ {g['date']}  pk={g['pk']}  expired (404)")
             unavailable.append(g)
@@ -301,7 +317,8 @@ def main():
     for i, g in enumerate(available, 1):
         log(f"\n[{i}/{len(available)}] {g['date']}  pk={g['pk']}  {g['away']} @ {g['home']}")
         try:
-            result = scrape_one_game(g["pk"], token, args.delete_bins)
+            result = scrape_one_game(g["pk"], token, args.delete_bins,
+                                     version=g.get("version"))
             log(f"  → {result}")
         except KeyboardInterrupt:
             log("KeyboardInterrupt — exiting.")

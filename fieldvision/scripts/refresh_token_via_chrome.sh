@@ -26,7 +26,7 @@ REPO_ROOT="${REPO_ROOT:-$HOME/fieldvision}"
 TOKEN_FILE="$REPO_ROOT/.fv_token.txt"
 EXPIRED_FLAG="$REPO_ROOT/state/token_expired.flag"
 LOG="$REPO_ROOT/scheduler.log"
-PY="${PY:-/Users/spencerbyers/anaconda3/bin/python3}"
+PY="${PY:-/usr/bin/python3}"  # anaconda is gone from this Mac; system python decodes the JWT fine
 
 ts() { date +"[%Y-%m-%d %H:%M:%S]"; }
 log() { echo "$(ts) [refresh-token] $*" | tee -a "$LOG"; }
