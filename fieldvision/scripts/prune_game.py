@@ -192,7 +192,22 @@ def prune_one(game_pk: int, data_dir: Path, args) -> dict:
         f"TO '{tmp.as_posix()}' "
         f"(FORMAT PARQUET, COMPRESSION 'zstd', ROW_GROUP_SIZE 100000)"
     )
+    # Verify the written file BEFORE swapping it in: a CIFS write-behind
+    # error (observed during a NAS ENOSPC burst 2026-08-09) can truncate
+    # the output without COPY raising — reading the count both checks the
+    # footer and the row total.
+    try:
+        got = con.execute(
+            f"SELECT COUNT(*) FROM read_parquet('{tmp.as_posix()}')"
+        ).fetchone()[0]
+    except Exception as e:
+        got = f"unreadable: {e}"
     con.close()
+    if got != after:
+        tmp.unlink(missing_ok=True)
+        out["error"] = (f"ABORTED, original kept: tmp had {got} rows, "
+                        f"expected {after}")
+        return out
     # Atomic-ish swap (rename within same filesystem). The old reader
     # connections will keep reading the new file via the same path.
     tmp.replace(af_path)
@@ -240,6 +255,9 @@ def main():
             continue
         if "skipped" in r:
             _log(f"  pk={pk}: skipped — {r['skipped']}")
+            continue
+        if "error" in r:
+            _log(f"  pk={pk}: {r['error']}")
             continue
         b, a = r["rows_before"], r["rows_after"]
         total_before += b
