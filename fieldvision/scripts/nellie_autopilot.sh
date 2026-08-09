@@ -32,5 +32,9 @@ tmux new-session -d -s "$SESSION" \
    FV_SAMPLES_DIR=$FV_ROOT/samples \
    FV_STATE_DIR=$FV_ROOT/state \
    /home/spencer/venvs/fieldvision/bin/python3 scripts/fv_autopilot.py \
-     --workers 8 --delete-bins ${FV_AUTOPILOT_ARGS:-} \
+     --workers 8 --delete-bins ${FV_AUTOPILOT_ARGS:---backlog-workers 0} \
      >> /home/spencer/logs/autopilot.log 2>&1"
+# Default is LIVE-ONLY (--backlog-workers 0): Spencer gates the backlog
+# explicitly. To drain the backlog, relaunch with
+#   FV_AUTOPILOT_ARGS="--backlog-workers 6" bash nellie_autopilot.sh
+# (after tmux kill-session -t fv-autopilot).
