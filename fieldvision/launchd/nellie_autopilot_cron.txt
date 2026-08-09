@@ -1,0 +1,7 @@
+# Crontab entries for the FieldVision autopilot on Nellie (crontab -e).
+# The keepalive relaunches the tmux session if it ever dies; the script
+# itself is a no-op while the session is healthy or the NAS is unmounted.
+# `bash` prefix is required: the NAS is mounted noexec.
+
+*/10 * * * * bash /media/scratch/spencer/github/baseball-biomechanics/fieldvision/scripts/nellie_autopilot.sh
+@reboot sleep 90 && bash /media/scratch/spencer/github/baseball-biomechanics/fieldvision/scripts/nellie_autopilot.sh
