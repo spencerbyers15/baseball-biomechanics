@@ -26,20 +26,28 @@ Host nellie
 SSH key auth is set up (Mac's `~/.ssh/id_ed25519.pub` is in Nellie's
 `~/.ssh/authorized_keys`). **No password needed**, persists across sessions.
 
-### Filesystem layout on Nellie
+### Filesystem layout on Nellie (updated 2026-08-09)
 
-- `/` (root partition): 98 GB total, 100% full — DO NOT install large packages here
-- `/media/scratch/spencer/` — NAS share (CIFS at `//10.210.1.247/scratch`, 21 TB free).
-  Mounted `noexec` and lacks POSIX locking, so:
-  - Python venvs and compiled `.so` extensions don't run from there
-  - SQLite writes are unreliable from there (fails with `database is locked`)
-- `/media/datasets`, `/media/models` — same NAS, separate shares (datasets,
-  trained models)
+- `/` (root partition): 98 GB, ~4 GB free — DO NOT install large packages here.
+  Python venvs live in `/home/spencer/venvs/` (e.g. `venvs/fieldvision`).
+- NAS (new hardware Aug 2026): CIFS shares from `//10.210.2.102` over 40 GbE,
+  mounted at `/media/{scratch,datasets,models}` (28 TB, ~20 TB free, SHARED
+  with other lab users — never touch their dirs). Still `noexec` (venvs can't
+  run from there) and no POSIX locking (SQLite unreliable; we use Parquet).
+- **Raw-data datasets → `/media/datasets/spencer/<dataset>/`** (each with a
+  README). FieldVision: `/media/datasets/spencer/fieldvision/data/<gamePk>/`.
+- Transient/working files → `/media/scratch/spencer/` (FieldVision `samples/`
+  + `state/` live in `/media/scratch/spencer/fieldvision/`).
+- Secrets (MLB JWT etc.) → private `/home/spencer/` ONLY, never the NAS.
+- Long-running process logs → local `/home/spencer/logs/` (CIFS-bound logging
+  can SIGPIPE-kill a daemon under NAS I/O load).
 
 ### Repos cloned on Nellie
 
-- `/media/scratch/spencer/baseball-biomechanics/` — this repo, SSH remote
-- `/media/scratch/spencer/JMaps/` — JMaps, SSH remote
+- `/media/scratch/spencer/github/baseball-biomechanics/` — this repo
+- The FieldVision capture autopilot runs from it in tmux session
+  `fv-autopilot` (cron keepalive; see `fieldvision/CLAUDE.md` "2026-08
+  revival" section for the full operating model)
 
 Both cloned via `git@github.com:spencerbyers15/<repo>.git` using Nellie's
 SSH key (added to Spencer's GitHub account). `git pull` / `git push` work
@@ -59,24 +67,17 @@ git's ownership safety check.
   first login; this is independent of key auth and not needed for routine
   use.
 
-### Open infrastructure problems (Phase 2)
+### Open infrastructure problems (2026-08-09)
 
-These came up when trying to host the full pipeline (not just the daemon)
-on Nellie:
+1. **NAS mounts are not in `/etc/fstab`** — they drop on reboot until
+   remounted via `/scratch/mount_nas_40gb.sh` (Andrew, root, pending).
+2. **Token refresh needs Spencer's Mac awake** — the launchd watchdog
+   drives Chrome for the MLB Okta JWT and scp's it to Nellie. Headless
+   refresh is the top follow-up (prior art: `fieldvision/scripts/auth_probe.py`,
+   `jwt_hunt.py`).
 
-1. **CIFS noexec** prevents Python venvs from running on `/media/scratch/`.
-   Fix: have Nellie's owner remount the share with `exec` in `/etc/fstab`.
-2. **CIFS lacks POSIX locking** so SQLite fails on the NAS. Fix: remount
-   with `nobrl` (no byte-range locking — SQLite still works since the
-   daemon is the only writer).
-3. **Root partition is 100% full**, blocking `pip install` to `~/.local`
-   even with `--break-system-packages`. Until those mount flags are fixed,
-   Phase 2 (analysis pipeline on Nellie) is blocked.
-
-The Mac currently runs the daemon as a fallback. Migration to Nellie
-becomes trivial once those two CIFS flags are flipped.
-
-See `fieldvision/MIGRATE_TO_NELLY.md` for the full migration plan.
+Capture migration to Nellie is DONE (2026-08-09) — the Mac no longer runs
+any capture daemon. `fieldvision/MIGRATE_TO_NELLY.md` is historical.
 
 ## Running Python on Windows
 
