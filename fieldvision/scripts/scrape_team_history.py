@@ -173,7 +173,7 @@ def scrape_one_game(pk: int, token: str, delete_bins: bool,
                     version: str | None = None) -> dict:
     """Download all segments for a game and ingest into per-game Parquet."""
     from fieldvision.storage_parquet import (
-        ParquetGameStore, ingest_segment_parquet, max_segment_idx_for_game,
+        ParquetGameStore, ingest_segment_parquet, ingested_segment_set,
     )
 
     out_dir = SAMPLES_DIR / f"binary_capture_{pk}"
@@ -207,17 +207,25 @@ def scrape_one_game(pk: int, token: str, delete_bins: bool,
     n_segments = len(manifest.get("records", []))
     log(f"  pk={pk} manifest: {n_segments} segments (v{version}), status={manifest.get('status')}")
 
-    # Resume: skip segments already in actor_frames.parquet. If there's
-    # existing data, write new segments to a suffixed file so pyarrow's
-    # ParquetWriter doesn't truncate the canonical actor_frames.parquet.
-    last_in_store = max_segment_idx_for_game(DATA_DIR, pk)
-    new_indices = [i for i in range(last_in_store + 1, n_segments)]
-    suffix = f"resume-{int(time.time())}" if last_in_store >= 0 else None
+    # Gap-aware resume: fetch exactly the non-gap manifest indices not yet
+    # ingested. A high-water-mark resume (max+1) permanently loses interior
+    # segments that failed mid-run (observed pk=824566: 6 segments dropped
+    # below the resume point). Manifest records carry isGap, so known gaps
+    # cost nothing to skip. If there's existing data, write to a suffixed
+    # file so pyarrow's ParquetWriter doesn't truncate the canonical
+    # actor_frames.parquet.
+    records = manifest.get("records", [])
+    gap_idx = {r.get("index", i) for i, r in enumerate(records) if r.get("isGap")}
+    ingested = ingested_segment_set(DATA_DIR, pk)
+    new_indices = [i for i in range(n_segments)
+                   if i not in ingested and i not in gap_idx]
+    suffix = f"resume-{int(time.time())}" if ingested else None
     store = ParquetGameStore(pk, DATA_DIR, append_suffix=suffix)
     metadata = json.loads((out_dir / f"mlb_{pk}_metadata.json").read_text())
     labels = json.loads((out_dir / f"mlb_{pk}_labels.json").read_text())
     labels_dict = store.write_lookups_from_metadata(metadata, labels)
-    log(f"  pk={pk} ingest range: segments {last_in_store + 1}..{n_segments - 1}  ({len(new_indices)} to fetch)")
+    log(f"  pk={pk} to fetch: {len(new_indices)} of {n_segments} "
+        f"({len(gap_idx)} known gaps, {len(ingested)} already ingested)")
 
     fetched = 0
     failed = 0

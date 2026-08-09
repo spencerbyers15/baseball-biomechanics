@@ -490,6 +490,28 @@ def actor_frame_parquet_paths(data_dir: Path, game_pk: int) -> list[Path]:
     return out
 
 
+def ingested_segment_set(data_dir: Path, game_pk: int) -> set:
+    """Distinct segment_idx values already ingested (finalized files only).
+
+    Used for gap-aware resume: a high-water-mark resume (max+1) permanently
+    loses interior segments that failed mid-run — observed on pk=824566,
+    where 6 segments below the resume point were silently dropped."""
+    paths = actor_frame_parquet_paths(data_dir, game_pk)
+    if not paths:
+        return set()
+    try:
+        import duckdb
+        con = duckdb.connect()
+        files_sql = "[" + ", ".join(f"'{p.as_posix()}'" for p in paths) + "]"
+        rows = con.execute(
+            f"SELECT DISTINCT segment_idx FROM read_parquet({files_sql})"
+        ).fetchall()
+        con.close()
+        return {int(r[0]) for r in rows}
+    except Exception:
+        return set()
+
+
 def max_segment_idx_for_game(data_dir: Path, game_pk: int) -> int:
     """Return the highest segment_idx already ingested for a game (for resume),
     or -1 if the game has no Parquet data yet. Reads only the actor_frames
