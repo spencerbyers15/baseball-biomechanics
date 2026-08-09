@@ -6,7 +6,8 @@ the DevTools-paste snippet, no Playwright needed.
 Behavior:
   - Polls statsapi.mlb.com every SCHEDULE_POLL_S for today's MLB schedule
   - For each game whose abstractGameState == 'Live':
-      - Polls fieldvision-hls.mlbinfra.com/mannequin/{pk}/1.6.2/manifest.json
+      - Polls fieldvision-hls.mlbinfra.com/mannequin/{pk}/<version>/manifest.json
+        (pipeline version resolved per game via fieldvision.mlb_api)
       - Downloads any new segments since last poll (samples/binary_capture_<pk>/)
       - Ingests each segment immediately into data/fv_<pk>.sqlite
   - Survives MLB rate limits (429) with exponential backoff
@@ -40,6 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from fieldvision.mlb_api import game_base, resolve_manifest
 from fieldvision.storage import (_actor_frame_insert_sql, _pitch_event_insert_sql,
                                  ingest_segment, load_lookup_tables, open_game_db,
                                  open_registry, transaction, update_registry)
@@ -52,7 +54,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SAMPLES_DIR = Path(os.environ.get("FV_SAMPLES_DIR", REPO_ROOT / "samples"))
 DATA_DIR = Path(os.environ.get("FV_DATA_DIR", REPO_ROOT / "data"))
 STATE_DIR = Path(os.environ.get("FV_STATE_DIR", REPO_ROOT / "state"))
-TOKEN_FILE = REPO_ROOT / ".fv_token.txt"
+# On Nellie the repo lives on the world-readable shared NAS, so the token
+# (a secret) must live in the private home dir — point FV_TOKEN_FILE there.
+TOKEN_FILE = Path(os.environ.get("FV_TOKEN_FILE", REPO_ROOT / ".fv_token.txt"))
 
 SCHEDULE_POLL_S = 600         # 10 min between schedule fetches
 SEGMENT_POLL_S = 30           # 30s between manifest polls per live game
@@ -206,7 +210,6 @@ def http_get(url: str, token: str, timeout: int = 30,
 
 def scrape_game_once(game_pk: int, token: str) -> dict:
     """Pull manifest + any new segments + ingest. Returns summary."""
-    base = f"https://fieldvision-hls.mlbinfra.com/mannequin/{game_pk}/1.6.2"
     out_dir = SAMPLES_DIR / f"binary_capture_{game_pk}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -214,18 +217,19 @@ def scrape_game_once(game_pk: int, token: str) -> dict:
     labels_path = out_dir / f"mlb_{game_pk}_labels.json"
     manifest_path = out_dir / f"mlb_{game_pk}_manifest.json"
 
-    status, body = http_get(f"{base}/manifest.json", token)
-    if status == 401:
-        return {"ok": False, "auth_failed": True, "error": "manifest 401"}
-    if status != 200:
-        return {"ok": False, "error": f"manifest HTTP {status}"}
+    version, status, body = resolve_manifest(game_pk, lambda u: http_get(u, token))
+    if status in (401, 403):
+        return {"ok": False, "auth_failed": True, "error": f"manifest {status}"}
+    if version is None or status != 200:
+        return {"ok": False, "error": f"manifest HTTP {status} (no working pipeline version)"}
+    base = game_base(game_pk, version)
     manifest_path.write_bytes(body)
     manifest = json.loads(body)
 
     if not metadata_path.exists():
         s, b = http_get(f"{base}/metadata.json", token)
-        if s == 401:
-            return {"ok": False, "auth_failed": True, "error": "metadata 401"}
+        if s in (401, 403):
+            return {"ok": False, "auth_failed": True, "error": f"metadata {s}"}
         if s != 200:
             return {"ok": False, "error": f"metadata HTTP {s}"}
         metadata_path.write_bytes(b)
@@ -264,7 +268,7 @@ def scrape_game_once(game_pk: int, token: str) -> dict:
     try:
         for i in new_indices:
             s, b = http_get(f"{base}/{i}.bin", token)
-            if s == 401:
+            if s in (401, 403):
                 auth_failed = True
                 break
             if s == 404:

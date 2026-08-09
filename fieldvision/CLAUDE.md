@@ -4,6 +4,36 @@
 > handoff from the previous session that built this project. Things
 > referenced here are real and tested; gotchas are real and bit us.
 
+## ★ 2026-08 revival — CURRENT operating model (supersedes older sections)
+
+Capture now runs on **Nellie** (256 cores, BU IP — verified served by
+fieldvision-hls), writing **Parquet** (not SQLite) to the **NAS**:
+
+- Repo clone: `/media/scratch/spencer/github/baseball-biomechanics`
+- **Raw data → the `datasets` share** (Spencer's convention: ALL raw-data
+  datasets for the project live under `/media/datasets/spencer/`):
+  `/media/datasets/spencer/fieldvision/data/<gamePk>/actor_frames.parquet`
+  etc. (412-game Apr 14–May 19 corpus, 1.6 TB; the 41-game SQLite-era set
+  is in `legacy_sqlite/` beside it; README.md there describes the layout)
+- Transient samples + operational state stay on scratch:
+  `/media/scratch/spencer/fieldvision/{samples,state}`
+- Token: `/home/spencer/.fv_token.txt` (private home — NEVER on the NAS,
+  it's world-readable). Point `FV_TOKEN_FILE` at it.
+- Pipeline version is **resolved dynamically** per game
+  (`src/fieldvision/mlb_api.py`): 1.6.2 died ~2026-05-20, 1.7.0 current,
+  old games still serve 1.6.2. `FV_PIPELINE_VERSION` overrides.
+- Scheduler: `scripts/fv_autopilot.py` in tmux (`fv-autopilot` session),
+  kept alive by cron (`launchd/nellie_autopilot_cron.txt`). Live slate
+  first, backlog oldest-first in idle slots. `scripts/fv_backfill.py` for
+  one-off parallel ranges.
+- Token refresh stays on the Mac: launchd `com.spencerbyers.fvtoken-watchdog`
+  (60s tick) → `~/fieldvision/scripts/refresh_token_via_chrome.sh` (needs a
+  logged-in mlb.com tab in Chrome; system python) → scp to Nellie's home.
+  The old `fvcapture`/`fvtoken` launchd jobs are retired (unloaded 2026-08-09;
+  Mac no longer captures).
+- Retention observed 2026-08-09: a 2026-04-14 game still served (~117 days).
+- The daemon-on-Mac-with-SQLite sections below are historical.
+
 ## What this is
 
 A pipeline that captures **MLB Hawk-Eye skeletal tracking data** (30 fps,

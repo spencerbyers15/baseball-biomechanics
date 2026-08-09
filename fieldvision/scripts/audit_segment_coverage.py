@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -16,16 +17,17 @@ import duckdb
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "src"))
+from fieldvision.mlb_api import resolve_manifest  # noqa: E402
 from fieldvision.parquet_readers import list_games  # noqa: E402
 
 DATA_DIR = Path(os.environ.get("FV_DATA_DIR", REPO_ROOT / "data"))
-TOKEN = (REPO_ROOT / ".fv_token.txt").read_text().strip()
+TOKEN = Path(os.environ.get("FV_TOKEN_FILE",
+                            REPO_ROOT / ".fv_token.txt")).read_text().strip()
 USER_AGENT = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
               "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 
-def manifest_segment_count(pk: int) -> int | None:
-    url = f"https://fieldvision-hls.mlbinfra.com/mannequin/{pk}/1.6.2/manifest.json"
+def _http_get(url: str) -> tuple[int, bytes]:
     req = urllib.request.Request(url, headers={
         "Authorization": f"Bearer {TOKEN}",
         "x-mannequin-client": "gameday",
@@ -35,9 +37,20 @@ def manifest_segment_count(pk: int) -> int | None:
     })
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
-            data = json.loads(r.read())
-        return len(data.get("records", []))
-    except Exception as e:
+            return r.status, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, b""
+    except Exception:
+        return 0, b""
+
+
+def manifest_segment_count(pk: int) -> int | None:
+    version, status, body = resolve_manifest(pk, _http_get)
+    if status != 200 or version is None:
+        return None
+    try:
+        return len(json.loads(body).get("records", []))
+    except Exception:
         return None
 
 

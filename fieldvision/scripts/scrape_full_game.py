@@ -22,6 +22,10 @@ from pathlib import Path
 import urllib.request
 import urllib.error
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from fieldvision.mlb_api import game_base, resolve_manifest  # noqa: E402
+
 
 def find_token(explicit: str | None) -> str:
     """Locate the bearer token. Priority: --token-file → ~/Downloads/.fv_token.txt → repo .fv_token.txt"""
@@ -102,19 +106,26 @@ async def run(args) -> None:
             "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         ),
     }
-    base = f"https://fieldvision-hls.mlbinfra.com/mannequin/{args.game}/1.6.2"
     out_dir = Path(args.out) / f"binary_capture_{args.game}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Schemas first
+    # Schemas first (resolving the pipeline version via the manifest probe)
     print("Fetching schema files...")
-    for name in ("manifest.json", "metadata.json", "labels.json"):
-        url = f"{base}/{name}"
-        status, body = http_get(url, headers)
+    version, status, body = resolve_manifest(
+        args.game, lambda u: http_get(u, headers))
+    if status != 200 or version is None:
+        raise SystemExit(
+            f"  manifest.json: HTTP {status} — token expired, game expired "
+            f"from retention, or unknown pipeline version")
+    base = game_base(args.game, version)
+    print(f"  pipeline version: {version}")
+    (out_dir / f"mlb_{args.game}_manifest.json").write_bytes(body)
+    print(f"  ✓ manifest.json  ({len(body):,} bytes)")
+    for name in ("metadata.json", "labels.json"):
+        status, body = http_get(f"{base}/{name}", headers)
         if status != 200:
             raise SystemExit(f"  {name}: HTTP {status} — token may be expired")
-        out = out_dir / f"mlb_{args.game}_{name}"
-        out.write_bytes(body)
+        (out_dir / f"mlb_{args.game}_{name}").write_bytes(body)
         print(f"  ✓ {name}  ({len(body):,} bytes)")
 
     manifest = json.loads((out_dir / f"mlb_{args.game}_manifest.json").read_text())

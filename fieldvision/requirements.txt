@@ -11,3 +11,7 @@ requests==2.32.3
 # Dev / test
 pytest==8.3.3
 pytest-asyncio==0.24.0
+
+# Capture + storage (src/fieldvision imports these directly)
+numpy>=1.26
+pyarrow>=16
