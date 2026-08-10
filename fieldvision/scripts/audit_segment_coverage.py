@@ -45,11 +45,15 @@ def _http_get(url: str) -> tuple[int, bytes]:
 
 
 def manifest_segment_count(pk: int) -> int | None:
+    """Count of NON-GAP manifest records — isGap segments 404 by design and
+    were never fetchable, so counting them as expected inflates "missing"
+    by the gap fraction (~20-30% of a typical manifest)."""
     version, status, body = resolve_manifest(pk, _http_get)
     if status != 200 or version is None:
         return None
     try:
-        return len(json.loads(body).get("records", []))
+        recs = json.loads(body).get("records", [])
+        return sum(1 for r in recs if not r.get("isGap"))
     except Exception:
         return None
 
