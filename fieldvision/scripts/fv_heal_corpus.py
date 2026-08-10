@@ -29,7 +29,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fieldvision.mlb_api import resolve_manifest  # noqa: E402
 from fieldvision.parquet_readers import list_games  # noqa: E402
 from fieldvision.storage_parquet import ingested_segment_set  # noqa: E402
-from scrape_team_history import http_get, scrape_one_game  # noqa: E402
+from scrape_team_history import (  # noqa: E402
+    http_get, mark_token_expired, scrape_one_game,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path(os.environ.get("FV_DATA_DIR", REPO_ROOT / "data"))
@@ -44,6 +46,8 @@ def scan_one(pk: int, token: str) -> dict:
     """How many non-gap manifest segments are we missing for pk?"""
     version, status, body = resolve_manifest(
         pk, lambda u: http_get(u, token, timeout=15, max_retries=2))
+    if status in (401, 403):
+        return {"pk": pk, "auth_failed": True, "status": status}
     if status == 404 or version is None:
         return {"pk": pk, "expired": status == 404, "status": status}
     recs = json.loads(body).get("records", [])
@@ -78,6 +82,12 @@ def main():
         except Exception as e:
             log(f"  pk={pk} scan failed: {e}")
             continue
+        if r.get("auth_failed"):
+            mark_token_expired(f"scan HTTP {r['status']} for pk={pk}")
+            log(f"  pk={pk}: token rejected (HTTP {r['status']}) — aborting "
+                f"scan early ({len(todo)} found so far). Watchdog flagged "
+                f"for refresh; re-run once a fresh token lands.")
+            break
         if r.get("expired"):
             expired.append(pk)
         elif r.get("missing", 0) > 0:
