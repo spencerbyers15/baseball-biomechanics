@@ -142,17 +142,35 @@ def _build_filter(args, con: duckdb.DuckDBPyConnection) -> str:
     return " AND ".join(f"({c})" for c in keep)
 
 
+def _finalized(p: Path) -> bool:
+    try:
+        if p.stat().st_size < 8:
+            return False
+        with p.open("rb") as f:
+            f.seek(-4, 2)
+            return f.read(4) == b"PAR1"
+    except OSError:
+        return False
+
+
 def prune_one(game_pk: int, data_dir: Path, args) -> dict:
     gdir = data_dir / str(game_pk)
     af_path = gdir / "actor_frames.parquet"
-    if not af_path.exists():
-        return {"game_pk": game_pk, "skipped": "no actor_frames.parquet"}
+    # Union ALL finalized actor files — live/heal captures leave suffixed
+    # poll-*/resume-* files beside (or instead of) the canonical one. The
+    # pruned output is written as the single canonical file and the
+    # suffixed sources are stashed, so this is prune + implicit compaction
+    # in one rewrite.
+    af_files = sorted(p for p in gdir.glob("actor_frames*.parquet")
+                      if _finalized(p))
+    if not af_files:
+        return {"game_pk": game_pk, "skipped": "no finalized actor_frames"}
 
     con = duckdb.connect()
-    # Register every parquet that exists as a view so the filter SQL can
-    # reference pitch_label, ball_frame, etc.
+    files_sql = "[" + ", ".join(f"'{p.as_posix()}'" for p in af_files) + "]"
+    con.execute(f"CREATE VIEW actor_frame AS SELECT * FROM "
+                f"read_parquet({files_sql}, union_by_name=true)")
     for table, fname in [
-        ("actor_frame",  "actor_frames"),
         ("pitch_label",  "pitch_labels"),
         ("ball_frame",   "ball_frames"),
     ]:
@@ -179,7 +197,7 @@ def prune_one(game_pk: int, data_dir: Path, args) -> dict:
         "rows_before": before,
         "rows_after": after,
         "pct_kept": pct,
-        "bytes_before": af_path.stat().st_size,
+        "bytes_before": sum(p.stat().st_size for p in af_files),
     }
 
     if args.dry_run:
@@ -208,9 +226,16 @@ def prune_one(game_pk: int, data_dir: Path, args) -> dict:
         out["error"] = (f"ABORTED, original kept: tmp had {got} rows, "
                         f"expected {after}")
         return out
-    # Atomic-ish swap (rename within same filesystem). The old reader
-    # connections will keep reading the new file via the same path.
+    # Atomic-ish swap (rename within same filesystem), then stash the
+    # suffixed source files: the pruned canonical now holds their (pruned)
+    # rows, so leaving them in place would make union readers double-count
+    # AND resurrect pruned rows.
     tmp.replace(af_path)
+    stash = gdir / "pre_prune"
+    for p in af_files:
+        if p != af_path:
+            stash.mkdir(exist_ok=True)
+            p.rename(stash / p.name)
     out["bytes_after"] = af_path.stat().st_size
     return out
 
