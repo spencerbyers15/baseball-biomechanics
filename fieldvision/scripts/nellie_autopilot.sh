@@ -31,6 +31,7 @@ tmux new-session -d -s "$SESSION" \
    FV_DATA_DIR=$FV_DATA \
    FV_SAMPLES_DIR=$FV_ROOT/samples \
    FV_STATE_DIR=$FV_ROOT/state \
+   FV_BACKLOG_START=2026-04-14 \
    /home/spencer/venvs/fieldvision/bin/python3 scripts/fv_autopilot.py \
      --workers 8 --delete-bins ${FV_AUTOPILOT_ARGS:---backlog-workers 6} \
      >> /home/spencer/logs/autopilot.log 2>&1"
