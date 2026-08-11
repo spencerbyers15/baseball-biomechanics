@@ -107,6 +107,7 @@ def fetch_schedule() -> list[dict]:
 
 
 def slow_refresher():
+    cycle = 0
     while True:
         try:
             have = captured_set()
@@ -127,13 +128,15 @@ def slow_refresher():
             _slow["sched_map"] = {g["pk"]: g for g in sched}
         except Exception as e:
             print("slow refresh failed:", e, flush=True)
-        # dataset size (du is minutes-slow on CIFS; every 3rd cycle ≈ 30 min)
-        try:
-            du = sh(f"du -sb {DATASET_ROOT} 2>/dev/null | cut -f1")
-            if du.isdigit():
-                _slow["du_bytes"] = int(du)
-        except Exception:
-            pass
+        # dataset size (du is minutes-slow on CIFS; only every 3rd cycle ≈ 30 min)
+        if cycle % 3 == 0:
+            try:
+                du = sh(f"du -sb {DATASET_ROOT} 2>/dev/null | cut -f1")
+                if du.isdigit():
+                    _slow["du_bytes"] = int(du)
+            except Exception:
+                pass
+        cycle += 1
         time.sleep(600)
 
 
