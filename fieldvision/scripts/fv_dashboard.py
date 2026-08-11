@@ -57,9 +57,6 @@ def gather() -> dict:
     now = datetime.now()
     log_tail = sh(f"tail -c 400000 {LOG}")
 
-    done_times = []
-    for m in re.finditer(r"\[(\d{2}):(\d{2}):\d{2}\]\s+pk=\d+ game done", log_tail):
-        done_times.append(m.group(0))
     # per-hour buckets for the last 24h from full-timestamp failure-proof parse
     hours = Counter()
     for m in re.finditer(r"\[(\d{2}):\d{2}:\d{2}\]\s+pk=(\d+) game done", log_tail):
