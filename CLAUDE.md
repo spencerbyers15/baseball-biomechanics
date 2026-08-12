@@ -71,10 +71,11 @@ git's ownership safety check.
 
 1. **NAS mounts are not in `/etc/fstab`** — they drop on reboot until
    remounted via `/scratch/mount_nas_40gb.sh` (Andrew, root, pending).
-2. **Token refresh needs Spencer's Mac awake** — the launchd watchdog
-   drives Chrome for the MLB Okta JWT and scp's it to Nellie. Headless
-   refresh is the top follow-up (prior art: `fieldvision/scripts/auth_probe.py`,
-   `jwt_hunt.py`).
+2. ~~**Token refresh needs Spencer's Mac awake**~~ — **SOLVED 2026-08-12.**
+   Nellie now mints the MLB Okta JWT itself via cron
+   (`fieldvision/scripts/refresh_token_headless.py`, runbook
+   `fieldvision/docs/headless_token_refresh.md`). The Mac is only needed for a
+   one-time cookie seed.
 
 Capture migration to Nellie is DONE (2026-08-09) — the Mac no longer runs
 any capture daemon. `fieldvision/MIGRATE_TO_NELLY.md` is historical.

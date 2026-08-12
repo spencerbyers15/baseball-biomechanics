@@ -15,3 +15,12 @@ pytest-asyncio==0.24.0
 # Capture + storage (src/fieldvision imports these directly)
 numpy>=1.26
 pyarrow>=16
+
+# Headless Okta token refresh (scripts/refresh_token_headless.py).
+# curl_cffi, not requests: ids.mlb.com/v1/authorize blocks on TLS fingerprint
+# and answers plain requests/curl with an empty HTTP 451.
+curl_cffi>=0.7
+
+# Mac-only, for the one-time cookie seed (scripts/seed_okta_cookie.py):
+# reads the httpOnly Okta session cookie out of Chrome's encrypted store.
+# browser_cookie3>=0.19
