@@ -26,11 +26,20 @@ fieldvision-hls), writing **Parquet** (not SQLite) to the **NAS**:
   kept alive by cron (`launchd/nellie_autopilot_cron.txt`). Live slate
   first, backlog oldest-first in idle slots. `scripts/fv_backfill.py` for
   one-off parallel ranges.
-- Token refresh stays on the Mac: launchd `com.spencerbyers.fvtoken-watchdog`
-  (60s tick) → `~/fieldvision/scripts/refresh_token_via_chrome.sh` (needs a
-  logged-in mlb.com tab in Chrome; system python) → scp to Nellie's home.
-  The old `fvcapture`/`fvtoken` launchd jobs are retired (unloaded 2026-08-09;
-  Mac no longer captures).
+- **Token refresh is HEADLESS on Nellie as of 2026-08-12** — the Mac is out of
+  the loop. Cron (`*/5`) runs `/home/spencer/refresh_token_headless.py`
+  (canonical: `scripts/refresh_token_headless.py`), which replays mlb.com's
+  Okta `prompt=none` PKCE silent-auth using the `idx` session cookie in
+  `/home/spencer/.fv_okta_cookies.json`. Okta rotates `idx` on every authorize
+  and the script persists it, so the session renews itself indefinitely.
+  Requires `curl_cffi` (plain requests/curl get HTTP 451 — TLS-fingerprint bot
+  blocking). One-time seed from the Mac: `scripts/seed_okta_cookie.py --push
+  nellie`; re-seed only when the refresher exits 2. Full runbook:
+  `docs/headless_token_refresh.md`. The Mac watchdog
+  (`com.spencerbyers.fvtoken-watchdog` → `refresh_token_via_chrome.sh`) is
+  unloaded and kept only as a manual fallback — never schedule both, they
+  write the same file. The old `fvcapture`/`fvtoken` launchd jobs are retired
+  (unloaded 2026-08-09; Mac no longer captures).
 - Retention observed 2026-08-09: a 2026-04-14 game still served (~117 days).
 - The daemon-on-Mac-with-SQLite sections below are historical.
 
