@@ -140,6 +140,33 @@ def slow_refresher():
         time.sleep(600)
 
 
+def live_slate() -> list[dict]:
+    """Today's schedule with statuses, cached 5 min (matchups for live rows)."""
+    cache = ROOT / "live_cache.json"
+    if cache.exists() and time.time() - cache.stat().st_mtime < 300:
+        try:
+            return json.loads(cache.read_text())
+        except Exception:
+            pass
+    try:
+        # MLB slates straddle UTC midnight — fetch yesterday+today.
+        d0 = (date.today() - timedelta(days=1)).isoformat()
+        d1 = date.today().isoformat()
+        url = (f"https://statsapi.mlb.com/api/v1/schedule?sportId=1"
+               f"&startDate={d0}&endDate={d1}")
+        with urllib.request.urlopen(url, timeout=20) as r:
+            d = json.load(r)
+        out = [{"pk": g["gamePk"],
+                "away": g["teams"]["away"]["team"]["name"],
+                "home": g["teams"]["home"]["team"]["name"],
+                "state": g["status"]["abstractGameState"]}
+               for day in d.get("dates", []) for g in day.get("games", [])]
+        cache.write_text(json.dumps(out))
+        return out
+    except Exception:
+        return []
+
+
 def gather() -> dict:
     now = datetime.now()
     log_tail = sh(f"tail -c 400000 {LOG}")
@@ -180,6 +207,29 @@ def gather() -> dict:
         if pk in working and m.start() > working[pk]["pos"]:
             working[pk]["fetched"] = int(m.group(2))
             working[pk]["rate"] = float(m.group(3))
+    # Persistent LIVE rows: live games are tracked with quick passes every
+    # ~5 min that finish in seconds, so 'currently in-flight' misses them.
+    live_rows = []
+    for g in live_slate():
+        if g["state"] != "Live":
+            continue
+        pk = g["pk"]
+        cov = None
+        last = None
+        for m in re.finditer(rf"pk={pk} to fetch: (\d+) of (\d+) "
+                             rf"\((\d+) known gaps, (\d+) already ingested\)",
+                             recent):
+            need, tot, gaps, have = map(int, m.groups())
+            non_gap = max(tot - gaps, 1)
+            cov = round(100 * have / non_gap, 1)
+            last = m.start()
+        in_pass = pk in working
+        live_rows.append({"pk": pk,
+                          "matchup": g["away"] + " @ " + g["home"],
+                          "cov": cov,
+                          "status": "in pass now" if in_pass else "tracking"})
+        working.pop(pk, None)  # avoid double-listing below
+
     cutoff = (date.today() - timedelta(days=1)).isoformat()
     work = []
     for w in working.values():
@@ -214,6 +264,7 @@ def gather() -> dict:
         "eta_days": eta_days,
         "calendar": _slow["calendar"],
         "working": work,
+        "live_now": live_rows,
     }
 
 
@@ -324,11 +375,13 @@ async function refresh(){
   row(s.recent_failures===0?"good":s.recent_failures<6?"warn":"bad","Recent errors",s.recent_failures+" in log tail") +
   row(s.reloc==="done"||s.reloc==="idle"?"good":s.reloc==="running"?"warn":"bad","Relocation",s.reloc) +
   row(s.legacy.files>=s.legacy.total?"good":"warn","Legacy sqlite",s.legacy.files+" / "+s.legacy.total+" files on datasets");
- $("working").innerHTML = (s.working && s.working.length)
+ const liveRows = (s.live_now||[]).map(w=>`<div class="row"><span class="dot" style="background:var(--warn)"></span>
+      <b>${w.matchup}</b><span style="color:var(--ink2)">LIVE · ${w.status}${w.cov!=null?" · "+w.cov+"% of game so far":""}</span></div>`).join("");
+ $("working").innerHTML = liveRows + ((s.working && s.working.length)
    ? s.working.map(w=>`<div class="row"><span class="dot" style="background:${w.kind==="backlog"?"var(--series)":"var(--warn)"}"></span>
       <b>${w.matchup}</b><span style="color:var(--ink2)">${w.date} · ${w.kind} · pass ${w.fetched}/${w.need} segs${w.rate?" @ "+w.rate+" seg/s":""}</span>
       <span style="margin-left:auto;font-variant-numeric:tabular-nums"><b>${w.pct}%</b> of game</span></div>`).join("")
-   : `<div class="u">idle — between passes (autopilot ticks every ~60s)</div>`;
+   : (liveRows ? "" : `<div class="u">idle — between passes (autopilot ticks every ~60s)</div>`));
  $("lastact").textContent = s.last_activity || "–";
  drawCal(s.calendar); drawChart(s.hourly);
 }
