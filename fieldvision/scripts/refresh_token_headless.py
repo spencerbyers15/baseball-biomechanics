@@ -86,7 +86,11 @@ EXPECTED_AUD = "api://mlb_default"
 IMPERSONATE = os.environ.get("FV_IMPERSONATE", "chrome")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TOKEN_FILE = Path(os.environ.get("FV_TOKEN_FILE", REPO_ROOT / ".fv_token.txt"))
+# TOKEN_FILE must default off REPO_ROOT-independent storage: the canonical
+# copy of this script lives in the repo clone, which on Nellie is checked
+# out on the NAS (world-readable CIFS share) — the JWT must never land
+# there, so the fallback goes to the private home dir instead.
+TOKEN_FILE = Path(os.environ.get("FV_TOKEN_FILE", Path.home() / ".fv_token.txt"))
 STATE_DIR = Path(os.environ.get("FV_STATE_DIR", REPO_ROOT / "state"))
 COOKIE_FILE = Path(os.environ.get("FV_OKTA_COOKIE_FILE",
                                   Path.home() / ".fv_okta_cookies.json"))
