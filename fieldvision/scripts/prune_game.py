@@ -32,11 +32,25 @@ Usage:
   python scripts/prune_game.py --game 823141 --drop-umps-coaches \\
       --drop-fielders-non-x --drop-fielders-no-touch-post-release
   python scripts/prune_game.py --all-games --drop-umps-coaches --dry-run
+
+⚠ Pruning is one-way for the canonical file. Only the *suffixed* source
+files are stashed to pre_prune/; the pre-prune canonical is replaced in
+place. Dropped rows are recoverable only by re-scraping, and only while the
+game is inside MLB's retention window.
+
+⚠ NEVER prune a game the autopilot might still capture. Gap-aware resume
+computes "missing" as a set-difference against the manifest, so it reads
+prune-dropped segments as gaps and refetches every one of them — mixing
+pruned and unpruned data and undoing the prune. This bit us twice. The
+completion marker is the guard, and `--require-marker` enforces it; it is
+mandatory for `--all-games` outside a dry run. Games whose actor file is
+currently open by a capture worker are skipped automatically.
 """
 
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import shutil
 import sys
@@ -153,9 +167,42 @@ def _finalized(p: Path) -> bool:
         return False
 
 
-def prune_one(game_pk: int, data_dir: Path, args) -> dict:
+def _open_paths() -> set[str]:
+    """Files currently held open by any visible process (Linux /proc scan).
+
+    A game whose canonical actor file is open is being captured RIGHT NOW.
+    Pruning it would rewrite the file out from under the writer.
+    """
+    live: set[str] = set()
+    for fd_dir in glob.glob("/proc/[0-9]*/fd"):
+        try:
+            entries = os.listdir(fd_dir)
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                live.add(os.readlink(os.path.join(fd_dir, entry)))
+            except OSError:
+                continue
+    return live
+
+
+def prune_one(game_pk: int, data_dir: Path, args, live_files=frozenset()) -> dict:
     gdir = data_dir / str(game_pk)
     af_path = gdir / "actor_frames.parquet"
+
+    # ── Safety gate ────────────────────────────────────────────────────
+    # Gap-aware resume treats prune-dropped segments as missing, so a capture
+    # pass over a pruned game refetches everything we just dropped (this bit
+    # us twice). The completion marker is the guard: never prune a game the
+    # autopilot might still touch.
+    if args.require_marker:
+        marker = Path(args.marker_dir) / f"complete_{game_pk}.marker"
+        if not marker.exists():
+            return {"game_pk": game_pk,
+                    "skipped": "no completion marker (autopilot may resume it)"}
+    if any(str(p) in live_files for p in gdir.glob("actor_frames*.parquet")):
+        return {"game_pk": game_pk, "skipped": "actor file open — capture in flight"}
     # Union ALL finalized actor files — live/heal captures leave suffixed
     # poll-*/resume-* files beside (or instead of) the canonical one. The
     # pruned output is written as the single canonical file and the
@@ -254,7 +301,23 @@ def main():
     ap.add_argument("--touch-radius", type=float, default=2.0,
                     help="Hand-to-ball distance (ft) below which a fielder is "
                          "considered to have touched the ball")
+    ap.add_argument("--require-marker", action="store_true",
+                    help="Only prune games with a complete_<pk>.marker. "
+                         "Strongly recommended for --all-games: pruning a "
+                         "game the autopilot later resumes makes gap-aware "
+                         "resume refetch every dropped segment.")
+    ap.add_argument("--marker-dir",
+                    default=os.environ.get(
+                        "FV_STATE_DIR",
+                        "/media/scratch/spencer/fieldvision/state"),
+                    help="Where complete_<pk>.marker files live")
     args = ap.parse_args()
+
+    if args.all_games and not args.require_marker and not args.dry_run:
+        ap.error("--all-games without --require-marker would prune games the "
+                 "autopilot may still resume, and gap-aware resume would then "
+                 "refetch every dropped segment. Pass --require-marker (or "
+                 "--dry-run to preview).")
 
     if not (args.game or args.all_games):
         ap.error("specify --game <pk> or --all-games")
@@ -268,17 +331,20 @@ def main():
         return
 
     _log(f"{'DRY RUN: ' if args.dry_run else ''}pruning {len(targets)} games")
+    live_files = _open_paths()
     total_before = 0
     total_after = 0
     total_bytes_before = 0
     total_bytes_after = 0
+    skipped: dict[str, int] = {}
     for pk in targets:
         try:
-            r = prune_one(pk, data_dir, args)
+            r = prune_one(pk, data_dir, args, live_files)
         except Exception as e:
             _log(f"  pk={pk}: FAILED ({type(e).__name__}: {e})")
             continue
         if "skipped" in r:
+            skipped[r["skipped"]] = skipped.get(r["skipped"], 0) + 1
             _log(f"  pk={pk}: skipped — {r['skipped']}")
             continue
         if "error" in r:
@@ -294,6 +360,12 @@ def main():
                  f"{r['bytes_before']/1e9:.2f} → {r['bytes_after']/1e9:.2f} GB")
         else:
             _log(f"  pk={pk}: {b:,} → {a:,} rows ({r['pct_kept']:.1f}% kept) [dry-run]")
+
+    if skipped:
+        _log("")
+        _log("=== skipped ===")
+        for reason, n in sorted(skipped.items(), key=lambda kv: -kv[1]):
+            _log(f"  {n:4d}  {reason}")
 
     if total_before:
         pct = 100.0 * total_after / total_before
