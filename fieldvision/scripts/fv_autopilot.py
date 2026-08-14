@@ -55,6 +55,8 @@ LIVE_PASS_S = 300  # per-game gap between live passes; each resume pass with
                    # new data writes a suffixed parquet, so don't over-tick
 SCHEDULE_REFRESH_S = 600
 BACKLOG_REFRESH_S = 6 * 3600
+LIVE_404_GIVE_UP = 3  # consecutive manifest-404 passes on a Final game before
+                      # we accept it has no Hawk-Eye feed and stop retrying
 
 
 def log(msg: str) -> None:
@@ -71,6 +73,25 @@ def read_token() -> str | None:
 
 def complete_marker(pk: int) -> Path:
     return STATE_DIR / f"complete_{pk}.marker"
+
+
+def live_404_streak(game_state: str | None, result: dict, prev: int) -> int:
+    """Consecutive manifest-404 passes for a Final game; 0 breaks the streak.
+
+    A Final game that keeps 404ing has no manifest and never will — some games
+    are simply never rigged for Hawk-Eye (special venues: Field of Dreams,
+    Little League Classic). The backlog path already marks 404s complete, but
+    the live/closing path did not, so such a game was re-submitted every cycle
+    forever (observed pk=823669, the 2026-08-13 Field of Dreams game: 107
+    futile passes in one day, each burning a worker slot).
+
+    Only Final games count, and only *consecutive* 404s, so a transient blip
+    on a real game can never skip it permanently.
+    """
+    if (game_state == "Final" and not result.get("ok")
+            and "manifest HTTP 404" in str(result.get("error", ""))):
+        return prev + 1
+    return 0
 
 
 def fetch_schedule_window() -> list[dict]:
@@ -143,6 +164,7 @@ def main():
     sched_at = backlog_at = 0.0
     inflight: dict[int, tuple[Future, str]] = {}  # pk -> (future, kind)
     live_quiet: dict[int, int] = {}  # pk -> consecutive no-new passes while Final
+    live_404: dict[int, int] = {}  # pk -> consecutive manifest-404 passes while Final
     last_live_pass: dict[int, float] = {}  # pk -> monotonic time of last submit
 
     with ProcessPoolExecutor(max_workers=args.workers) as pool:
@@ -198,6 +220,14 @@ def main():
                         live_quiet.pop(pk, None)
                     if not r.get("ok"):
                         log(f"live pk={pk} pass failed: {r.get('error')}")
+                    live_404[pk] = live_404_streak(game_state, r,
+                                                   live_404.get(pk, 0))
+                    if live_404[pk] >= LIVE_404_GIVE_UP:
+                        complete_marker(pk).write_text(json.dumps(r) + "\n")
+                        live_404.pop(pk, None)
+                        log(f"live pk={pk} no manifest after "
+                            f"{LIVE_404_GIVE_UP} passes (venue likely has no "
+                            f"Hawk-Eye) — marked, will not retry")
 
             # Submit live passes (priority)
             live_pks = [g["pk"] for g in schedule if g["state"] == "Live"]
