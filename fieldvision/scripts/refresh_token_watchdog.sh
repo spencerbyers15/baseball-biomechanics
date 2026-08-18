@@ -16,11 +16,12 @@ set -uo pipefail
 # REPO_ROOT must be a TCC-safe path (outside ~/Documents, ~/Desktop, ~/Downloads)
 # because launchd-spawned processes can't write into Documents on modern macOS.
 # The refresh_token_via_chrome.sh and our own log writes use this dir.
-REPO_ROOT="${REPO_ROOT:-/Users/spencerbyers/fieldvision}"
-REPO_GIT="${REPO_GIT:-/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision}"
-NELLIE_HOST="${NELLIE_HOST:-nellie}"
-NELLIE_STATE_DIR="${NELLIE_STATE_DIR:-/media/scratch/spencer/fieldvision/state}"
-NELLIE_TOKEN_PATH="${NELLIE_TOKEN_PATH:-/home/spencer/.fv_token.txt}"  # private home, NOT the world-readable NAS
+REPO_ROOT="${REPO_ROOT:-$HOME/fieldvision}"
+REPO_GIT="${REPO_GIT:-$HOME/Documents/GitHub/baseball-biomechanics/fieldvision}"
+NELLIE_HOST="${NELLIE_HOST:-nellie}"   # ssh alias; real host in .env
+NELLIE_USER="${NELLIE_USER:-$(id -un)}"
+NELLIE_STATE_DIR="${NELLIE_STATE_DIR:-/media/scratch/$NELLIE_USER/fieldvision/state}"
+NELLIE_TOKEN_PATH="${NELLIE_TOKEN_PATH:-/home/$NELLIE_USER/.fv_token.txt}"  # private home, NOT the world-readable NAS
 NELLIE_FLAG="$NELLIE_STATE_DIR/token_expired.flag"
 LOCAL_TOKEN="$REPO_ROOT/.fv_token.txt"
 PROACTIVE_MAX_AGE_HOURS=18

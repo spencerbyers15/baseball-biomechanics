@@ -8,7 +8,7 @@ attached NAS.
 ## Network access
 
 - **VPN first.** You must be on the home VPN to reach Nelly or the NAS.
-- **NAS IP**: `10.210.1.101` (used for bulk data storage)
+- **NAS IP**: `${NELLIE_HOST}` (used for bulk data storage)
 - **SSH host**: Nelly (whatever its hostname/IP resolves to once VPN'd in —
   ask owner for the resolvable name or IP)
 - **Username**: `spencer`
@@ -29,7 +29,7 @@ On your Mac (only once):
 [ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -C "spencerbyers@$(hostname)"
 
 # Connect to VPN first, then push the key to Nelly
-ssh-copy-id spencer@<nelly-host>     # will prompt for password the one time
+ssh-copy-id ${NELLIE_USER}@<nelly-host>     # will prompt for password the one time
 ```
 
 Then add a host entry so future commands are short:
@@ -38,7 +38,7 @@ Then add a host entry so future commands are short:
 # ~/.ssh/config
 Host nelly
     HostName <nelly-host>
-    User spencer
+    User ${NELLIE_USER}
     IdentityFile ~/.ssh/id_ed25519
 ```
 
@@ -52,7 +52,7 @@ From then on: `ssh nelly` no password needed.
   later)
 - All Python analysis: census, outcome phase, render scripts, jPCA fits
 
-## What goes on the NAS at 10.210.1.101
+## What goes on the NAS at ${NELLIE_HOST}
 
 The big stuff that grows with time:
 - `data/` — per-game SQLite databases (~3-4 GB each, hundreds eventually)
@@ -229,10 +229,10 @@ After=network-online.target
 [Service]
 Type=simple
 User=spencer
-WorkingDirectory=/home/spencer/baseball-biomechanics/fieldvision
-ExecStart=/home/spencer/baseball-biomechanics/.venv/bin/python -u scripts/fv_daemon.py
-StandardOutput=append:/home/spencer/baseball-biomechanics/fieldvision/scheduler.log
-StandardError=append:/home/spencer/baseball-biomechanics/fieldvision/scheduler.log
+WorkingDirectory=${NELLIE_HOME}/baseball-biomechanics/fieldvision
+ExecStart=${NELLIE_HOME}/baseball-biomechanics/.venv/bin/python -u scripts/fv_daemon.py
+StandardOutput=append:${NELLIE_HOME}/baseball-biomechanics/fieldvision/scheduler.log
+StandardError=append:${NELLIE_HOME}/baseball-biomechanics/fieldvision/scheduler.log
 Restart=on-failure
 RestartSec=30
 

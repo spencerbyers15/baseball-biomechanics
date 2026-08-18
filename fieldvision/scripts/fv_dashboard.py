@@ -1,6 +1,7 @@
 """FieldVision status dashboard — single-file generator + web server.
 
-Runs on Nellie; serves http://10.210.1.101:8377 (VPN required).
+Runs on the capture host; serves http://$NELLIE_HOST:$FV_DASHBOARD_PORT
+(VPN required). Host/paths come from fieldvision/.env — see .env.example.
 Threads: fast stats every 45s; capture-calendar + captured-set every 10 min
 (CIFS footer reads are slow); dataset du every 30 min. index.html renders
 client-side and re-fetches every 30s.
@@ -14,6 +15,7 @@ from __future__ import annotations
 import base64
 import http.server
 import json
+import os
 import re
 import subprocess
 import threading
@@ -23,16 +25,27 @@ from collections import Counter
 from datetime import datetime, date, timedelta
 from pathlib import Path
 
-PORT = 8377
-ROOT = Path("/home/spencer/dashboard")
-LOG = Path("/home/spencer/logs/autopilot.log")
-RELOC_LOG = Path("/home/spencer/logs/reloc2.log")
-STATE = Path("/media/scratch/spencer/fieldvision/state")
-DATASET_ROOT = Path("/media/datasets/spencer/fieldvision")
-DATA_TREES = [DATASET_ROOT / "data",
-              Path("/media/scratch/spencer/fieldvision/data")]  # scratch until migration done
+# Host-specific values come from the environment (fieldvision/.env, see
+# .env.example) so this public repo carries no real hostnames or usernames.
+# Defaults derive from $HOME / $USER and resolve to the same paths the
+# capture host has always used.
+_HOME = Path.home()
+_USER = os.environ.get("USER") or _HOME.name
+_SCRATCH = Path(os.environ.get("FV_SCRATCH_ROOT",
+                               f"/media/scratch/{_USER}/fieldvision"))
+
+PORT = int(os.environ.get("FV_DASHBOARD_PORT", "8377"))
+ROOT = Path(os.environ.get("FV_DASHBOARD_ROOT", _HOME / "dashboard"))
+LOG_DIR = Path(os.environ.get("FV_LOG_DIR", _HOME / "logs"))
+LOG = LOG_DIR / "autopilot.log"
+RELOC_LOG = LOG_DIR / "reloc2.log"
+STATE = Path(os.environ.get("FV_STATE_DIR", _SCRATCH / "state"))
+DATASET_ROOT = Path(os.environ.get("FV_DATASET_ROOT",
+                                   f"/media/datasets/{_USER}/fieldvision"))
+DATA_TREES = [Path(os.environ.get("FV_DATA_DIR", DATASET_ROOT / "data")),
+              _SCRATCH / "data"]  # scratch until migration done
 LEGACY = DATASET_ROOT / "legacy_sqlite"
-TOKEN = Path("/home/spencer/.fv_token.txt")
+TOKEN = Path(os.environ.get("FV_TOKEN_FILE", _HOME / ".fv_token.txt"))
 ICLOUD_LEGACY_TOTAL = 64
 SEASON_START = "2026-04-14"  # first corpus game
 

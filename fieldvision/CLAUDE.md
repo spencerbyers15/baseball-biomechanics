@@ -9,15 +9,15 @@
 Capture now runs on **Nellie** (256 cores, BU IP — verified served by
 fieldvision-hls), writing **Parquet** (not SQLite) to the **NAS**:
 
-- Repo clone: `/media/scratch/spencer/github/baseball-biomechanics`
+- Repo clone: `/media/scratch/${NELLIE_USER}/github/baseball-biomechanics`
 - **Raw data → the `datasets` share** (Spencer's convention: ALL raw-data
-  datasets for the project live under `/media/datasets/spencer/`):
-  `/media/datasets/spencer/fieldvision/data/<gamePk>/actor_frames.parquet`
+  datasets for the project live under `/media/datasets/${NELLIE_USER}/`):
+  `/media/datasets/${NELLIE_USER}/fieldvision/data/<gamePk>/actor_frames.parquet`
   etc. (412-game Apr 14–May 19 corpus, 1.6 TB; the 41-game SQLite-era set
   is in `legacy_sqlite/` beside it; README.md there describes the layout)
 - Transient samples + operational state stay on scratch:
-  `/media/scratch/spencer/fieldvision/{samples,state}`
-- Token: `/home/spencer/.fv_token.txt` (private home — NEVER on the NAS,
+  `/media/scratch/${NELLIE_USER}/fieldvision/{samples,state}`
+- Token: `${NELLIE_HOME}/.fv_token.txt` (private home — NEVER on the NAS,
   it's world-readable). Point `FV_TOKEN_FILE` at it.
 - Pipeline version is **resolved dynamically** per game
   (`src/fieldvision/mlb_api.py`): 1.6.2 died ~2026-05-20, 1.7.0 current,
@@ -27,10 +27,10 @@ fieldvision-hls), writing **Parquet** (not SQLite) to the **NAS**:
   first, backlog oldest-first in idle slots. `scripts/fv_backfill.py` for
   one-off parallel ranges.
 - **Token refresh is HEADLESS on Nellie as of 2026-08-12** — the Mac is out of
-  the loop. Cron (`*/5`) runs `/home/spencer/refresh_token_headless.py`
+  the loop. Cron (`*/5`) runs `${NELLIE_HOME}/refresh_token_headless.py`
   (canonical: `scripts/refresh_token_headless.py`), which replays mlb.com's
   Okta `prompt=none` PKCE silent-auth using the `idx` session cookie in
-  `/home/spencer/.fv_okta_cookies.json`. Okta rotates `idx` on every authorize
+  `${NELLIE_HOME}/.fv_okta_cookies.json`. Okta rotates `idx` on every authorize
   and the script persists it, so the session renews itself indefinitely.
   Requires `curl_cffi` (plain requests/curl get HTTP 451 — TLS-fingerprint bot
   blocking). One-time seed from the Mac: `scripts/seed_okta_cookie.py --push
@@ -316,7 +316,7 @@ ps aux | grep scrape_team_history | grep -v grep
 # 3. Is the token still valid?
 python3 -c "
 import base64, json, time
-tok = open('/Users/spencerbyers/fieldvision/.fv_token.txt').read().strip()
+tok = open('$HOME/fieldvision/.fv_token.txt').read().strip()
 p = tok.split('.')[1] + '=' * (-len(tok.split('.')[1]) % 4)
 c = json.loads(base64.urlsafe_b64decode(p))
 print(f'expires in {(c[\"exp\"] - time.time()) / 3600:.1f} hours')

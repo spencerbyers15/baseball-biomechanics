@@ -6,9 +6,11 @@
 # NAS is mounted noexec anyway).
 #
 # Deploy:  scp fieldvision/scripts/nas_integrity_sweep.py \
-#              nellie:/home/spencer/nas_integrity_sweep.py
+#              "$NELLIE:~/nas_integrity_sweep.py"
 #
 # Exit 1 (damage found) also appends to state/INTEGRITY_ALERT.txt, which is
 # what the dashboard and the next session look at.
-exec ~/venvs/fieldvision/bin/python3 /home/spencer/nas_integrity_sweep.py \
-    >> /home/spencer/logs/nightly_sweep.log 2>&1
+FV_LOG_DIR="${FV_LOG_DIR:-$HOME/logs}"
+mkdir -p "$FV_LOG_DIR"
+exec ~/venvs/fieldvision/bin/python3 ~/nas_integrity_sweep.py \
+    >> "$FV_LOG_DIR/nightly_sweep.log" 2>&1

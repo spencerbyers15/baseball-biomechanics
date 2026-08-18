@@ -44,7 +44,7 @@
 - [ ] **Step 1: Confirm clean tree and create branch**
 
 ```bash
-cd /Users/spencerbyers/fieldvision
+cd $HOME/fieldvision
 git status
 git checkout -b feat/event-ingestion
 ```

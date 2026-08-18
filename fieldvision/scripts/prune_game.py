@@ -309,7 +309,8 @@ def main():
     ap.add_argument("--marker-dir",
                     default=os.environ.get(
                         "FV_STATE_DIR",
-                        "/media/scratch/spencer/fieldvision/state"),
+                        f"/media/scratch/{os.environ.get('USER') or Path.home().name}"
+                        "/fieldvision/state"),
                     help="Where complete_<pk>.marker files live")
     args = ap.parse_args()
 
