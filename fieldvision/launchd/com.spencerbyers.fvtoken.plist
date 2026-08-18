@@ -9,7 +9,7 @@
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>REPO_ROOT=/Users/spencerbyers/fieldvision bash /Users/spencerbyers/fieldvision/scripts/refresh_token_via_chrome.sh &amp;&amp; /usr/bin/scp /Users/spencerbyers/fieldvision/.fv_token.txt nellie:/media/scratch/spencer/github/baseball-biomechanics/fieldvision/.fv_token.txt</string>
+        <string>REPO_ROOT=$HOME/fieldvision bash $HOME/fieldvision/scripts/refresh_token_via_chrome.sh &amp;&amp; /usr/bin/scp $HOME/fieldvision/.fv_token.txt nellie:/media/scratch/$NELLIE_USER/github/baseball-biomechanics/fieldvision/.fv_token.txt</string>
     </array>
 
     <key>StartInterval</key>
@@ -19,17 +19,17 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision/state/fvtoken.log</string>
+    <string>$HOME/Documents/GitHub/baseball-biomechanics/fieldvision/state/fvtoken.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision/state/fvtoken.err.log</string>
+    <string>$HOME/Documents/GitHub/baseball-biomechanics/fieldvision/state/fvtoken.err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>HOME</key>
-        <string>/Users/spencerbyers</string>
+        <string>$HOME</string>
     </dict>
 </dict>
 </plist>

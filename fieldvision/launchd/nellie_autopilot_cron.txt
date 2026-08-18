@@ -3,5 +3,5 @@
 # itself is a no-op while the session is healthy or the NAS is unmounted.
 # `bash` prefix is required: the NAS is mounted noexec.
 
-*/10 * * * * bash /media/scratch/spencer/github/baseball-biomechanics/fieldvision/scripts/nellie_autopilot.sh
-@reboot sleep 90 && bash /media/scratch/spencer/github/baseball-biomechanics/fieldvision/scripts/nellie_autopilot.sh
+*/10 * * * * bash /media/scratch/$USER/github/baseball-biomechanics/fieldvision/scripts/nellie_autopilot.sh
+@reboot sleep 90 && bash /media/scratch/$USER/github/baseball-biomechanics/fieldvision/scripts/nellie_autopilot.sh

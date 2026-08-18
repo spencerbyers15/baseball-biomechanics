@@ -13,7 +13,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/spencerbyers/fieldvision/scripts/refresh_token_watchdog.sh</string>
+        <string>$HOME/fieldvision/scripts/refresh_token_watchdog.sh</string>
     </array>
 
     <!-- Poll every 60s. Each poll is one fast ssh check + (only when needed)
@@ -25,17 +25,17 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision/state/watchdog.out.log</string>
+    <string>$HOME/Documents/GitHub/baseball-biomechanics/fieldvision/state/watchdog.out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>/Users/spencerbyers/Documents/GitHub/baseball-biomechanics/fieldvision/state/watchdog.err.log</string>
+    <string>$HOME/Documents/GitHub/baseball-biomechanics/fieldvision/state/watchdog.err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>HOME</key>
-        <string>/Users/spencerbyers</string>
+        <string>$HOME</string>
     </dict>
 </dict>
 </plist>

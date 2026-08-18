@@ -11,15 +11,15 @@ home VPN.
 
 ```bash
 ssh nellie                              # via the alias below
-ssh spencer@10.210.1.101                # explicit
+ssh ${NELLIE_USER}@${NELLIE_HOST}                # explicit
 ```
 
 The `~/.ssh/config` alias on Spencer's Mac:
 
 ```sshconfig
 Host nellie
-    HostName 10.210.1.101
-    User spencer
+    HostName ${NELLIE_HOST}
+    User ${NELLIE_USER}
     IdentityFile ~/.ssh/id_ed25519
 ```
 
@@ -29,22 +29,22 @@ SSH key auth is set up (Mac's `~/.ssh/id_ed25519.pub` is in Nellie's
 ### Filesystem layout on Nellie (updated 2026-08-09)
 
 - `/` (root partition): 98 GB, ~4 GB free — DO NOT install large packages here.
-  Python venvs live in `/home/spencer/venvs/` (e.g. `venvs/fieldvision`).
-- NAS (new hardware Aug 2026): CIFS shares from `//10.210.2.102` over 40 GbE,
+  Python venvs live in `${NELLIE_HOME}/venvs/` (e.g. `venvs/fieldvision`).
+- NAS (new hardware Aug 2026): CIFS shares from `//${NAS_HOST}` over 40 GbE,
   mounted at `/media/{scratch,datasets,models}` (28 TB, ~20 TB free, SHARED
   with other lab users — never touch their dirs). Still `noexec` (venvs can't
   run from there) and no POSIX locking (SQLite unreliable; we use Parquet).
-- **Raw-data datasets → `/media/datasets/spencer/<dataset>/`** (each with a
-  README). FieldVision: `/media/datasets/spencer/fieldvision/data/<gamePk>/`.
-- Transient/working files → `/media/scratch/spencer/` (FieldVision `samples/`
-  + `state/` live in `/media/scratch/spencer/fieldvision/`).
-- Secrets (MLB JWT etc.) → private `/home/spencer/` ONLY, never the NAS.
-- Long-running process logs → local `/home/spencer/logs/` (CIFS-bound logging
+- **Raw-data datasets → `/media/datasets/${NELLIE_USER}/<dataset>/`** (each with a
+  README). FieldVision: `/media/datasets/${NELLIE_USER}/fieldvision/data/<gamePk>/`.
+- Transient/working files → `/media/scratch/${NELLIE_USER}/` (FieldVision `samples/`
+  + `state/` live in `/media/scratch/${NELLIE_USER}/fieldvision/`).
+- Secrets (MLB JWT etc.) → private `${NELLIE_HOME}/` ONLY, never the NAS.
+- Long-running process logs → local `${NELLIE_HOME}/logs/` (CIFS-bound logging
   can SIGPIPE-kill a daemon under NAS I/O load).
 
 ### Repos cloned on Nellie
 
-- `/media/scratch/spencer/github/baseball-biomechanics/` — this repo
+- `/media/scratch/${NELLIE_USER}/github/baseball-biomechanics/` — this repo
 - The FieldVision capture autopilot runs from it in tmux session
   `fv-autopilot` (cron keepalive; see `fieldvision/CLAUDE.md` "2026-08
   revival" section for the full operating model)

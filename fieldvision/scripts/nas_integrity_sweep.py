@@ -52,13 +52,19 @@ import sys
 import time
 from pathlib import Path
 
+# Host-specific roots come from the environment (fieldvision/.env — see
+# .env.example) so this public repo carries no real usernames. Defaults
+# derive from $USER and match what the capture host has always used.
+_USER = os.environ.get("USER") or Path.home().name
+_DATASET_ROOT = os.environ.get("FV_DATASET_ROOT", f"/media/datasets/{_USER}/fieldvision")
+_SCRATCH_ROOT = os.environ.get("FV_SCRATCH_ROOT", f"/media/scratch/{_USER}/fieldvision")
+
 DEFAULT_TREES = [
-    "/media/datasets/spencer/fieldvision/data",
-    "/media/scratch/spencer/fieldvision/data",
+    f"{_DATASET_ROOT}/data",
+    f"{_SCRATCH_ROOT}/data",
 ]
 ALERT_FILE = Path(os.environ.get(
-    "FV_INTEGRITY_ALERT",
-    "/media/scratch/spencer/fieldvision/state/INTEGRITY_ALERT.txt"))
+    "FV_INTEGRITY_ALERT", f"{_SCRATCH_ROOT}/state/INTEGRITY_ALERT.txt"))
 
 
 def open_paths() -> set[str]:
