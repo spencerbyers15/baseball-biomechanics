@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- launchd does NOT shell-expand plist strings — $HOME/$USER-style
+     references below are inert. Replace YOUR_USERNAME with your real
+     macOS account name before installing this job (retired; kept as a
+     manual-fallback template, see fieldvision/CLAUDE.md). -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -7,13 +11,13 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>$HOME/anaconda3/envs/baseball/bin/python</string>
+        <string>/Users/YOUR_USERNAME/anaconda3/envs/baseball/bin/python</string>
         <string>-u</string>
-        <string>$HOME/fieldvision/scripts/fv_daemon.py</string>
+        <string>/Users/YOUR_USERNAME/fieldvision/scripts/fv_daemon.py</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>$HOME/fieldvision</string>
+    <string>/Users/YOUR_USERNAME/fieldvision</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -25,19 +29,19 @@
     <integer>30</integer>
 
     <key>StandardOutPath</key>
-    <string>$HOME/fieldvision/scheduler.log</string>
+    <string>/Users/YOUR_USERNAME/fieldvision/scheduler.log</string>
 
     <key>StandardErrorPath</key>
-    <string>$HOME/fieldvision/scheduler.err</string>
+    <string>/Users/YOUR_USERNAME/fieldvision/scheduler.err</string>
 
     <key>EnvironmentVariables</key>
     <dict>
         <key>HOME</key>
-        <string>$HOME</string>
+        <string>/Users/YOUR_USERNAME</string>
         <key>USER</key>
-        <string>spencerbyers</string>
+        <string>YOUR_USERNAME</string>
         <key>PATH</key>
-        <string>$HOME/anaconda3/envs/baseball/bin:$HOME/anaconda3/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>/Users/YOUR_USERNAME/anaconda3/envs/baseball/bin:/Users/YOUR_USERNAME/anaconda3/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
 </dict>
 </plist>

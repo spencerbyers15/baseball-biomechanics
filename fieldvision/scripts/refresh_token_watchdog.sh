@@ -18,8 +18,18 @@ set -uo pipefail
 # The refresh_token_via_chrome.sh and our own log writes use this dir.
 REPO_ROOT="${REPO_ROOT:-$HOME/fieldvision}"
 REPO_GIT="${REPO_GIT:-$HOME/Documents/GitHub/baseball-biomechanics/fieldvision}"
+
+# Host-specific values live in fieldvision/.env (gitignored — see
+# .env.example). NELLIE_USER is Nellie's account, which is NOT necessarily
+# this Mac's local account — never default it from the local user.
+if [ -f "$REPO_GIT/.env" ]; then
+  set -a; . "$REPO_GIT/.env"; set +a
+fi
 NELLIE_HOST="${NELLIE_HOST:-nellie}"   # ssh alias; real host in .env
-NELLIE_USER="${NELLIE_USER:-$(id -un)}"
+if [ -z "${NELLIE_USER:-}" ]; then
+  echo "NELLIE_USER is not set — copy fieldvision/.env.example to fieldvision/.env and fill it in" >&2
+  exit 1
+fi
 NELLIE_STATE_DIR="${NELLIE_STATE_DIR:-/media/scratch/$NELLIE_USER/fieldvision/state}"
 NELLIE_TOKEN_PATH="${NELLIE_TOKEN_PATH:-/home/$NELLIE_USER/.fv_token.txt}"  # private home, NOT the world-readable NAS
 NELLIE_FLAG="$NELLIE_STATE_DIR/token_expired.flag"

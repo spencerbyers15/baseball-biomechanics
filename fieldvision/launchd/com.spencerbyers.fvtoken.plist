@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- launchd does NOT shell-expand plist strings, so the ProgramArguments'
+     $HOME/$NELLIE_USER references below are shell-expanded ONLY because
+     they live inside the `bash -c "..."` argument (bash sees its own
+     inherited env). This job is retired (see fieldvision/CLAUDE.md);
+     replace YOUR_USERNAME/NELLIE_USERNAME with real values before
+     installing it. -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
@@ -9,7 +15,7 @@
     <array>
         <string>/bin/bash</string>
         <string>-c</string>
-        <string>REPO_ROOT=$HOME/fieldvision bash $HOME/fieldvision/scripts/refresh_token_via_chrome.sh &amp;&amp; /usr/bin/scp $HOME/fieldvision/.fv_token.txt nellie:/media/scratch/$NELLIE_USER/github/baseball-biomechanics/fieldvision/.fv_token.txt</string>
+        <string>REPO_ROOT=/Users/YOUR_USERNAME/fieldvision bash /Users/YOUR_USERNAME/fieldvision/scripts/refresh_token_via_chrome.sh &amp;&amp; /usr/bin/scp /Users/YOUR_USERNAME/fieldvision/.fv_token.txt nellie:/media/scratch/NELLIE_USERNAME/github/baseball-biomechanics/fieldvision/.fv_token.txt</string>
     </array>
 
     <key>StartInterval</key>
@@ -19,17 +25,17 @@
     <true/>
 
     <key>StandardOutPath</key>
-    <string>$HOME/Documents/GitHub/baseball-biomechanics/fieldvision/state/fvtoken.log</string>
+    <string>/Users/YOUR_USERNAME/Documents/GitHub/baseball-biomechanics/fieldvision/state/fvtoken.log</string>
 
     <key>StandardErrorPath</key>
-    <string>$HOME/Documents/GitHub/baseball-biomechanics/fieldvision/state/fvtoken.err.log</string>
+    <string>/Users/YOUR_USERNAME/Documents/GitHub/baseball-biomechanics/fieldvision/state/fvtoken.err.log</string>
 
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
         <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>HOME</key>
-        <string>$HOME</string>
+        <string>/Users/YOUR_USERNAME</string>
     </dict>
 </dict>
 </plist>

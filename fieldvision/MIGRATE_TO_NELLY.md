@@ -11,7 +11,7 @@ attached NAS.
 - **NAS IP**: `${NELLIE_HOST}` (used for bulk data storage)
 - **SSH host**: Nelly (whatever its hostname/IP resolves to once VPN'd in —
   ask owner for the resolvable name or IP)
-- **Username**: `spencer`
+- **Username**: `${NELLIE_USER}`
 - **Password**: kept out of this doc. The owner provided it verbally. There
   was a parenthesized `(death...)` prefix that may be a network/host name
   qualifier or an actual password prefix — confirm with the owner what it
@@ -115,7 +115,7 @@ pip install hdbscan umap-learn scipy
 ### 3. Mount the NAS and symlink data dirs
 
 Whatever the owner has configured for NAS auth (NFS, SMB, sshfs) — get
-`/mnt/baseball-data/` mounted with read+write for user `spencer`. Then
+`/mnt/baseball-data/` mounted with read+write for user `${NELLIE_USER}`. Then
 inside the cloned repo:
 
 ```bash
@@ -228,7 +228,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=spencer
+User=${NELLIE_USER}
 WorkingDirectory=${NELLIE_HOME}/baseball-biomechanics/fieldvision
 ExecStart=${NELLIE_HOME}/baseball-biomechanics/.venv/bin/python -u scripts/fv_daemon.py
 StandardOutput=append:${NELLIE_HOME}/baseball-biomechanics/fieldvision/scheduler.log
