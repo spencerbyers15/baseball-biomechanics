@@ -39,8 +39,8 @@ try a newer curl_cffi / a newer `--impersonate` target.
 
 ## Usage (Nellie, from cron)
 
-    FV_TOKEN_FILE=/home/spencer/.fv_token.txt \
-    FV_STATE_DIR=/media/scratch/spencer/fieldvision/state \
+    FV_TOKEN_FILE=$HOME/.fv_token.txt \
+    FV_STATE_DIR=/media/scratch/$USER/fieldvision/state \
       ~/venvs/fieldvision/bin/python scripts/refresh_token_headless.py
 
 Skips silently while the current token has more than --min-hours left, so it

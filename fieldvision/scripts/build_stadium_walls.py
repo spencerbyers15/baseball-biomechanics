@@ -7,7 +7,7 @@ distances against statsapi fieldInfo where available.
 
 Needs: numpy, DracoPy (pip install DracoPy), network.
 
-  python scripts/build_stadium_walls.py --out /media/datasets/spencer/fieldvision/stadium_walls
+  python scripts/build_stadium_walls.py --out /media/datasets/$USER/fieldvision/stadium_walls
   python scripts/build_stadium_walls.py --out walls_cache --venue 5
 """
 

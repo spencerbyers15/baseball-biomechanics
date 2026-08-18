@@ -204,8 +204,8 @@ CREATE INDEX IF NOT EXISTS idx_pl_time    ON pitch_label(start_time_unix);
 
 - [ ] **Step 3: Run tests, verify they fail (some will pass — INSERT helpers don't have a behavior test)**
   ```bash
-  cd /Users/spencerbyers/fieldvision
-  /Users/spencerbyers/anaconda3/bin/python3 -m pytest tests/test_storage_schema.py -v
+  cd $HOME/fieldvision
+  $HOME/anaconda3/bin/python3 -m pytest tests/test_storage_schema.py -v
   ```
   Expected before storage.py edits: `test_pitch_event_columns` likely passes (subset), `test_pitch_label_columns` fails (table doesn't exist), `test_indexes_exist` fails (new index names), `test_no_game_event_table` fails (still exists from v1).
 
@@ -546,13 +546,13 @@ For each frame, walk gameEvents and trackedEvents and emit one `pitch_event` row
 
 - [ ] **Step 1: Backup the existing DB** (it has 10GB+ of ingested data we don't want to lose if something explodes):
   ```bash
-  cp /Users/spencerbyers/fieldvision/data/fv_823141.sqlite /Users/spencerbyers/fieldvision/data/fv_823141.sqlite.pre-v2-backup
+  cp $HOME/fieldvision/data/fv_823141.sqlite $HOME/fieldvision/data/fv_823141.sqlite.pre-v2-backup
   ```
 
 - [ ] **Step 2: Re-ingest:**
   ```bash
-  cd /Users/spencerbyers/fieldvision
-  /Users/spencerbyers/anaconda3/bin/python3 scripts/load_to_db.py --game 823141 --rebuild
+  cd $HOME/fieldvision
+  $HOME/anaconda3/bin/python3 scripts/load_to_db.py --game 823141 --rebuild
   ```
 
 - [ ] **Step 3: Sanity-check pitch_event:**
@@ -795,8 +795,8 @@ Fetches `feed/live` for a game, walks `liveData.plays.allPlays[].playEvents[]`, 
 
 - [ ] **Step 5: Real-world run for game 823141:**
   ```bash
-  cd /Users/spencerbyers/fieldvision
-  /Users/spencerbyers/anaconda3/bin/python3 scripts/ingest_pitch_labels.py --game 823141
+  cd $HOME/fieldvision
+  $HOME/anaconda3/bin/python3 scripts/ingest_pitch_labels.py --game 823141
   sqlite3 data/fv_823141.sqlite \
     "SELECT pitch_type, COUNT(*), AVG(start_speed) FROM pitch_label GROUP BY pitch_type ORDER BY 2 DESC;"
   ```
@@ -934,19 +934,19 @@ Update the data model section + open-work list to reflect v2.
 
 - [ ] **Step 1: Backfill statsapi labels for every captured game**
   ```bash
-  cd /Users/spencerbyers/fieldvision
+  cd $HOME/fieldvision
   for db in data/fv_*.sqlite; do
     pk=$(basename "$db" .sqlite | sed 's/^fv_//')
     [[ "$pk" == "games_registry" ]] && continue
     echo "=== $pk ==="
-    /Users/spencerbyers/anaconda3/bin/python3 scripts/ingest_pitch_labels.py --game "$pk" || true
+    $HOME/anaconda3/bin/python3 scripts/ingest_pitch_labels.py --game "$pk" || true
   done
   ```
   Statsapi data is independent of wire ingestion — labels for game N apply whether or not actor_frame is populated.
 
 - [ ] **Step 2: Final test sweep**
   ```bash
-  /Users/spencerbyers/anaconda3/bin/python3 -m pytest tests/ -v
+  $HOME/anaconda3/bin/python3 -m pytest tests/ -v
   ```
   All green. If anything fails, fix before merging.
 

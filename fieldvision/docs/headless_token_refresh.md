@@ -51,22 +51,22 @@ out: upgrade `curl_cffi`, or set `FV_IMPERSONATE` to a newer target
 | Piece | Location |
 |---|---|
 | Canonical script | this repo, `fieldvision/scripts/refresh_token_headless.py` |
-| Deployed copy | `/home/spencer/refresh_token_headless.py` (**local disk, not the NAS** — token refresh must survive an unmounted NAS) |
-| Session cookie jar | `/home/spencer/.fv_okta_cookies.json`, mode 0600 |
-| Token output | `/home/spencer/.fv_token.txt`, mode 0600, written atomically |
-| Log | `/home/spencer/logs/token_refresh.log` |
+| Deployed copy | `${NELLIE_HOME}/refresh_token_headless.py` (**local disk, not the NAS** — token refresh must survive an unmounted NAS) |
+| Session cookie jar | `${NELLIE_HOME}/.fv_okta_cookies.json`, mode 0600 |
+| Token output | `${NELLIE_HOME}/.fv_token.txt`, mode 0600, written atomically |
+| Log | `${NELLIE_HOME}/logs/token_refresh.log` |
 | Schedule | cron `*/5 * * * *` (skip-if-fresh makes this nearly free) |
 
 Deployed copy and repo copy must be kept in sync — redeploy with:
 
 ```bash
-scp fieldvision/scripts/refresh_token_headless.py nellie:/home/spencer/refresh_token_headless.py
+scp fieldvision/scripts/refresh_token_headless.py nellie:${NELLIE_HOME}/refresh_token_headless.py
 ```
 
 Cron entry:
 
 ```cron
-*/5 * * * * FV_TOKEN_FILE=/home/spencer/.fv_token.txt FV_STATE_DIR=/media/scratch/spencer/fieldvision/state /home/spencer/venvs/fieldvision/bin/python /home/spencer/refresh_token_headless.py >> /home/spencer/logs/token_refresh.log 2>&1
+*/5 * * * * FV_TOKEN_FILE=${NELLIE_HOME}/.fv_token.txt FV_STATE_DIR=/media/scratch/${NELLIE_USER}/fieldvision/state ${NELLIE_HOME}/venvs/fieldvision/bin/python ${NELLIE_HOME}/refresh_token_headless.py >> ${NELLIE_HOME}/logs/token_refresh.log 2>&1
 ```
 
 Running every 5 minutes is deliberate: the script no-ops while the token has
@@ -100,12 +100,12 @@ Re-run this **only** when the refresher exits 2.
 
 ## Monitoring
 
-The dashboard (`http://10.210.1.101:8377`) Token tile shows hours remaining —
+The dashboard (`http://${NELLIE_HOST}:8377`) Token tile shows hours remaining —
 it should sawtooth between 24h and 18h and never approach zero. To check by
 hand:
 
 ```bash
-ssh nellie 'FV_TOKEN_FILE=/home/spencer/.fv_token.txt ~/venvs/fieldvision/bin/python /home/spencer/refresh_token_headless.py --validate-only'
+ssh nellie 'FV_TOKEN_FILE=${NELLIE_HOME}/.fv_token.txt ~/venvs/fieldvision/bin/python ${NELLIE_HOME}/refresh_token_headless.py --validate-only'
 ```
 
 ## Status of the old Mac path

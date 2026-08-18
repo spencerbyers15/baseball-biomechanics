@@ -21,10 +21,10 @@ state/token_expired.flag (the Mac watchdog refreshes + scp's within ~60s)
 and the pass is retried next tick.
 
 Run on Nellie under tmux (see launchd/nellie_autopilot_cron.txt):
-  FV_TOKEN_FILE=/home/spencer/.fv_token.txt \
-  FV_DATA_DIR=/media/datasets/spencer/fieldvision/data \
-  FV_SAMPLES_DIR=/media/scratch/spencer/fieldvision/samples \
-  FV_STATE_DIR=/media/scratch/spencer/fieldvision/state \
+  FV_TOKEN_FILE=${NELLIE_HOME}/.fv_token.txt \
+  FV_DATA_DIR=/media/datasets/${NELLIE_USER}/fieldvision/data \
+  FV_SAMPLES_DIR=/media/scratch/${NELLIE_USER}/fieldvision/samples \
+  FV_STATE_DIR=/media/scratch/${NELLIE_USER}/fieldvision/state \
   python3 scripts/fv_autopilot.py --workers 8 --delete-bins
 """
 

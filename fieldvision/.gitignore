@@ -73,3 +73,12 @@ samples/decoded_*.png
 # (publicly fetchable; not our code, don't commit)
 samples/mlb_bundles/
 .claude/settings.local.json
+
+# Host/config env file — real IPs + usernames. NEVER commit (repo is public).
+.env
+.env.local
+!.env.example
+
+# Okta session cookie jar (headless token refresh)
+.fv_okta_cookies.json
+.fv_okta*

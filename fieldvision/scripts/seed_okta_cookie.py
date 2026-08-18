@@ -34,9 +34,13 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import os
 import sys
 
-REMOTE_PATH = "/home/spencer/.fv_okta_cookies.json"
+# Remote home is expanded by the remote shell, so `~` keeps this
+# host-agnostic. Override with FV_REMOTE_COOKIE_PATH if needed.
+REMOTE_PATH = os.environ.get("FV_REMOTE_COOKIE_PATH",
+                             "~/.fv_okta_cookies.json")
 # `idx` is Okta's session cookie and is sufficient on its own (verified
 # 2026-08-12). `DT` is the device token — harmless to carry along, and Okta
 # sometimes wants it for device-binding checks.
