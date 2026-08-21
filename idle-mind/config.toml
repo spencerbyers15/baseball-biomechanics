@@ -1,0 +1,45 @@
+# Idle Mind configuration.
+# Model IDs verified against Anthropic docs 2026-08-21.
+
+[models]
+foreground = "claude-opus-5"     # top-tier: talks to the user
+idle = "claude-sonnet-5"         # mid-tier: cheap, frequent idle ticks
+compressor = "claude-sonnet-5"   # compression is the product; don't skimp
+consolidator = "claude-sonnet-5" # Phase 2
+summarizer = "claude-haiku-4-5"  # rolling transcript summary for the idle context
+vision = "claude-opus-5"         # Phase 3
+embedding = ""                   # Phase 2 — Anthropic has no embeddings endpoint; see DECISIONS.md
+
+[idle]
+tick_seconds = 45
+tick_jitter_seconds = 15
+backoff_after_minutes = 10
+max_tick_seconds = 600
+context_thoughts = 8
+transcript_summary_every_turns = 10
+transcript_verbatim_turns = 3
+max_sim_ticks = 30               # /sleep safety cap: max back-to-back simulated ticks per call
+
+[memory]                         # Phase 2 — parsed but unused in Phase 1
+consolidate_every_ticks = 20
+evoke_threshold = 0.78
+evoke_max = 3
+salience_floor = 0.15
+archive_after_days = 30
+
+[perception]                     # Phase 3 — parsed but unused in Phase 1
+enabled = false
+webcam_interval_minutes = 5
+feeds = []
+
+[budget]
+daily_tokens = 2000000
+
+[foreground]
+max_transcript_turns = 40        # verbatim turns sent to the foreground model
+
+[storage]
+db_path = "data/idle_mind.db"
+
+[logging]
+dir = "logs"
