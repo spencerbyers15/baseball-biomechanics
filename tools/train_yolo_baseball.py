@@ -124,15 +124,14 @@ def train(epochs: int = 100, batch: int = 8, imgsz: int = 640,
         create_train_val_split(DATA_DIR)
     else:
         print("Skipping split (using existing)")
+        if not data_yaml.exists():
+            print(f"Error: {data_yaml} not found.")
+            print("Run baseball_labeler.py first, label some frames, and save.")
+            return
 
     # Always rewrite: the committed data.yaml's path may be from another machine
     print("\n[2/3] Updating data.yaml...")
     update_data_yaml(DATA_DIR)
-
-    if not data_yaml.exists():
-        print(f"Error: {data_yaml} not found.")
-        print("Run baseball_labeler.py first, label some frames, and save.")
-        return
 
     # Load YOLOv8 model
     base_model = f"yolov8{model_size}.pt"
