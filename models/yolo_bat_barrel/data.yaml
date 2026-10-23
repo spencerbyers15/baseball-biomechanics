@@ -3,7 +3,7 @@
 # Auto-generated: 2026-01-07T12:25:27.190650
 
 # Dataset paths
-path: F:\Claude_Projects\baseball-biomechanics\data\labels\bat_barrel
+path: data/labels/bat_barrel
 train: images/train
 val: images/val
 

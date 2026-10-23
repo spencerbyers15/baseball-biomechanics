@@ -10,6 +10,8 @@ from pathlib import Path
 
 import cv2
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 
 def convert_to_yolo_format(frames_dir: str, output_dir: str):
     """Convert diverse frame annotations to YOLO format."""
@@ -98,8 +100,9 @@ names:
     return str(yaml_path)
 
 
-def train_yolo(yaml_path: str, epochs: int = 100, model_size: str = "s"):
+def train_yolo(yaml_path: str, project_dir: Path, epochs: int = 100, model_size: str = "s"):
     """Train YOLOv8 on the diverse dataset."""
+    import torch
     from ultralytics import YOLO
 
     model_name = f"yolov8{model_size}.pt"
@@ -112,8 +115,8 @@ def train_yolo(yaml_path: str, epochs: int = 100, model_size: str = "s"):
         epochs=epochs,
         imgsz=640,
         batch=8,  # Good for 8GB VRAM
-        device=0,
-        project=str(Path(__file__).resolve().parents[1] / "models"),
+        device=0 if torch.cuda.is_available() else "cpu",
+        project=str(project_dir / "models"),
         name="yolo_mitt_diverse",
         exist_ok=True,
         patience=20,
@@ -207,7 +210,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Train YOLO on diverse dataset")
-    parser.add_argument("--project-dir", default=str(Path(__file__).resolve().parents[1]))
+    parser.add_argument("--project-dir", default=str(PROJECT_ROOT))
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--model", default="s", choices=["n", "s", "m"])
     parser.add_argument("--convert-only", action="store_true")
@@ -232,7 +235,7 @@ def main():
         return
 
     # Train
-    train_yolo(yaml_path, epochs=args.epochs, model_size=args.model)
+    train_yolo(yaml_path, project_dir, epochs=args.epochs, model_size=args.model)
 
     # Test
     model_path = project_dir / "models" / "yolo_mitt_diverse" / "weights" / "best.pt"
