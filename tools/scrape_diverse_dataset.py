@@ -17,6 +17,7 @@ import pandas as pd
 # Add project to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.paths import portable_entries
 from src.scraper.savant import BaseballSavantScraper
 from src.scraper.video_downloader import VideoDownloader
 
@@ -342,7 +343,7 @@ def main():
     # Save frames info for labeling
     frames_info_path = frames_dir / "frames_info.json"
     with open(frames_info_path, "w") as f:
-        json.dump(frames_info, f, indent=2)
+        json.dump(portable_entries(frames_info, ("path",), project_dir), f, indent=2)
 
     print(f"\n{'='*60}")
     print(f"COMPLETE!")

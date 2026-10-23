@@ -17,7 +17,7 @@ from src.paths import PROJECT_ROOT, resolve_repo_path
 RUN_NAME = "yolo_mitt_diverse"
 
 
-def convert_to_yolo_format(frames_dir: str, output_dir: str):
+def convert_to_yolo_format(frames_dir: str, output_dir: str, project_dir: Path = PROJECT_ROOT):
     """Convert diverse frame annotations to YOLO format."""
     frames_dir = Path(frames_dir)
     output_dir = Path(output_dir)
@@ -51,7 +51,7 @@ def convert_to_yolo_format(frames_dir: str, output_dir: str):
 
     def process_frames(frames, split):
         for idx, (frame_info, frame_id, boxes) in enumerate(frames):
-            img_path = resolve_repo_path(frame_info["path"])
+            img_path = resolve_repo_path(frame_info["path"], project_dir)
             if not img_path.exists():
                 print(f"  Warning: Image not found: {img_path}")
                 continue
@@ -113,7 +113,7 @@ def train_yolo(yaml_path: str, project_dir: Path, epochs: int = 100, model_size:
     model = YOLO(model_name)
 
     print(f"Training for {epochs} epochs...")
-    results = model.train(
+    model.train(
         data=yaml_path,
         epochs=epochs,
         imgsz=640,
@@ -126,7 +126,7 @@ def train_yolo(yaml_path: str, project_dir: Path, epochs: int = 100, model_size:
         plots=True,
     )
 
-    return Path(model.trainer.save_dir) / "weights" / "best.pt"
+    return Path(model.trainer.best)
 
 
 def test_model(model_path: str, test_dir: str, output_dir: str):
@@ -231,7 +231,7 @@ def main():
         return
 
     # Convert data
-    yaml_path = convert_to_yolo_format(str(frames_dir), str(yolo_dir))
+    yaml_path = convert_to_yolo_format(str(frames_dir), str(yolo_dir), project_dir)
 
     if args.convert_only:
         return

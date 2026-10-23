@@ -36,11 +36,12 @@ from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Tuple, Dict
+import os
 import shutil
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.paths import PROJECT_ROOT, resolve_repo_path, to_repo_relative
+from src.paths import PROJECT_ROOT, portable_entries, resolve_entries, resolve_repo_path, to_repo_relative
 DEFAULT_FRAMES_DIR = PROJECT_ROOT / "data/bat_frames_round2_filtered"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data/labels/bat_barrel"
 
@@ -111,6 +112,8 @@ class BarrelLabeler:
     """Interactive labeling tool for bat barrel keypoints."""
 
     def __init__(self, frames_dir: Path, output_dir: Path):
+        # Absolute, so globbed frame keys match the re-rooted annotation keys
+        frames_dir = Path(os.path.abspath(frames_dir))
         self.frames_dir = frames_dir
         self.output_dir = output_dir
         self.labels_dir = output_dir / "labels"
@@ -168,8 +171,7 @@ class BarrelLabeler:
         if self.flagged_file.exists():
             with open(self.flagged_file, "r") as f:
                 self.flagged_frames = json.load(f).get("flagged", [])
-            for entry in self.flagged_frames:
-                entry["frame_path"] = str(resolve_repo_path(entry["frame_path"]))
+            resolve_entries(self.flagged_frames, ("frame_path",))
 
         labeled = sum(1 for a in self.annotations.values() if a.status == "labeled")
         skipped = sum(1 for a in self.annotations.values() if a.status == "skipped")
@@ -219,8 +221,9 @@ class BarrelLabeler:
             ann_data = asdict(ann)
             # Convert tuples to lists for JSON
             ann_data["keypoints"] = [list(kp) if kp else None for kp in ann.keypoints]
-            ann_data["frame_path"] = to_repo_relative(path)
-            ann_dict[to_repo_relative(path)] = ann_data
+            rel = to_repo_relative(path)
+            ann_data["frame_path"] = rel
+            ann_dict[rel] = ann_data
 
         data = {
             "metadata": {
@@ -245,8 +248,7 @@ class BarrelLabeler:
                 "description": "Frames flagged as wrong camera angle for debugging",
                 "created": datetime.now().isoformat(),
             },
-            "flagged": [{**e, "frame_path": to_repo_relative(e["frame_path"])}
-                        for e in self.flagged_frames]
+            "flagged": portable_entries(self.flagged_frames, ("frame_path",))
         }
         with open(self.flagged_file, "w") as f:
             json.dump(flagged_data, f, indent=2)

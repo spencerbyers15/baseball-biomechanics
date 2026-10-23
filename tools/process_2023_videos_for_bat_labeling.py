@@ -18,6 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.filtering.scene_cropper import crop_to_main_angle
+from src.paths import portable_entries
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VIDEOS_DIR = PROJECT_ROOT / "data/videos/2023_round2"
@@ -215,7 +216,7 @@ def main():
         # Save frames info
         frames_info_path = FRAMES_DIR / "frames_info.json"
         with open(frames_info_path, "w") as f:
-            json.dump(frames_info, f, indent=2)
+            json.dump(portable_entries(frames_info, ("path",)), f, indent=2)
 
         print(f"\n{'='*60}")
         print("COMPLETE!")
