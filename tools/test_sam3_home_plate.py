@@ -9,6 +9,7 @@ import os
 import sys
 import warnings
 from pathlib import Path
+from typing import Optional
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
@@ -29,7 +30,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 class SAM3HomePlateDetector:
     """Home plate detection using SAM3 with text prompts."""
 
-    def __init__(self, cache_dir: str = "F:/hf_cache"):
+    def __init__(self, cache_dir: Optional[str] = None):
         self.cache_dir = cache_dir
         self.model = None
         self.processor = None

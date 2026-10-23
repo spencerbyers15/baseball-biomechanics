@@ -57,7 +57,7 @@ MLB_STADIUMS = {
     "Busch Stadium": {"code": "2889", "home_team": "STL"},
 }
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VIDEOS_DIR = PROJECT_ROOT / "data/videos/2023_round2"
 FRAMES_DIR = PROJECT_ROOT / "data/bat_frames_round2"
 

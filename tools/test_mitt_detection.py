@@ -17,12 +17,13 @@ logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("torch").setLevel(logging.ERROR)
 
 from pathlib import Path
+from typing import Optional
 import cv2
 import numpy as np
 import torch
 
 
-def load_sam3(cache_dir: str = "F:/hf_cache"):
+def load_sam3(cache_dir: Optional[str] = None):
     """Load SAM3 model and processor."""
     from transformers import Sam3Model, Sam3Processor
 
@@ -191,7 +192,7 @@ def draw_results(frame, masks, boxes, scores, prompt: str, color=(255, 0, 255)):
 
 
 def main():
-    project_dir = Path("F:/Claude_Projects/baseball-biomechanics")
+    project_dir = Path(__file__).resolve().parents[1]
     video_dir = project_dir / "data" / "videos" / "2024" / "04"
     output_dir = project_dir / "data" / "debug" / "mitt_test"
     output_dir.mkdir(parents=True, exist_ok=True)

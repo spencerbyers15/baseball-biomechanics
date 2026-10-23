@@ -266,8 +266,8 @@ Pipeline per frame:
 
 **Usage**:
 ```bash
-C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/demo_full_pipeline.py --video <path>
-C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/demo_full_pipeline.py --skip-home-plate  # random video, no SAM3
+python tools/demo_full_pipeline.py --video <path>
+python tools/demo_full_pipeline.py --skip-home-plate  # random video, no SAM3
 ```
 
 ### Target output schema

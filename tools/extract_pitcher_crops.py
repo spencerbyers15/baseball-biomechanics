@@ -26,7 +26,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_VIDEO_DIR = PROJECT_ROOT / "data/videos/pitcher_calibration_cropped"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data/labels/pitcher/crops"
 DEFAULT_METADATA_PATH = PROJECT_ROOT / "data/labels/pitcher/crop_metadata.json"

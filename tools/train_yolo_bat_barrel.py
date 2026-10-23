@@ -24,7 +24,7 @@ import random
 from pathlib import Path
 from datetime import datetime
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LABELS_DIR = PROJECT_ROOT / "data/labels/bat_barrel"
 MODEL_DIR = PROJECT_ROOT / "models/yolo_bat_barrel"
 

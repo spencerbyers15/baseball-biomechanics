@@ -38,7 +38,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Tuple, Dict
 import shutil
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FRAMES_DIR = PROJECT_ROOT / "data/bat_frames_round2_filtered"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data/labels/bat_barrel"
 

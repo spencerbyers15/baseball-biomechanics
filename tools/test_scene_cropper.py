@@ -7,7 +7,8 @@ import sys
 from pathlib import Path
 
 # Add project to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.filtering.scene_cropper import (
     detect_scene_cuts,
@@ -53,7 +54,7 @@ def test_full_pipeline(video_path: str, output_dir: str = None):
     print(f"{'='*60}")
 
     if output_dir is None:
-        output_dir = Path("F:/Claude_Projects/baseball-biomechanics/data/debug/scene_crop_test")
+        output_dir = PROJECT_ROOT / "data/debug/scene_crop_test"
     else:
         output_dir = Path(output_dir)
 
@@ -105,7 +106,7 @@ def main():
     if args.video:
         video_path = args.video
     else:
-        video_path = "F:/Claude_Projects/baseball-biomechanics/data/videos/2024/07/746122_20_1.mp4"
+        video_path = str(PROJECT_ROOT / "data/videos/2024/07/746122_20_1.mp4")
 
     if not Path(video_path).exists():
         print(f"Error: Video not found: {video_path}")

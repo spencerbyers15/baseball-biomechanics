@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 from collections import defaultdict
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 LABELS_PATH = PROJECT_ROOT / "data/labels/scene_cuts/scene_cut_labels.json"
 OUTPUT_DIR = PROJECT_ROOT / "data/labels/scene_cuts/frames"
 

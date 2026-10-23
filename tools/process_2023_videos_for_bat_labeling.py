@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.filtering.scene_cropper import crop_to_main_angle
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VIDEOS_DIR = PROJECT_ROOT / "data/videos/2023_round2"
 CROPPED_DIR = PROJECT_ROOT / "data/videos/2023_cropped"
 FRAMES_DIR = PROJECT_ROOT / "data/bat_frames_round2_filtered"
