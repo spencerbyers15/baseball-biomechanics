@@ -6,7 +6,7 @@ import random
 from pathlib import Path
 from tqdm import tqdm
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 VIDEOS_DIR = PROJECT_ROOT / "data/videos/diverse_stadiums"
 OUTPUT_DIR = PROJECT_ROOT / "data/bat_labeling/frames"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

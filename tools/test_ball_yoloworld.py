@@ -6,7 +6,7 @@ import numpy as np
 from pathlib import Path
 from ultralytics import YOLOWorld
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "data/debug/ball_yoloworld_test"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 

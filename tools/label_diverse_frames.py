@@ -14,7 +14,7 @@ from mitt_labeler import MittLabeler
 
 
 def main():
-    project_dir = Path("F:/Claude_Projects/baseball-biomechanics")
+    project_dir = Path(__file__).resolve().parents[1]
     frames_dir = project_dir / "data" / "labels" / "diverse_frames"
 
     # Create labeler with custom output dir

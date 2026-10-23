@@ -113,7 +113,7 @@ def train_yolo(yaml_path: str, epochs: int = 100, model_size: str = "s"):
         imgsz=640,
         batch=8,  # Good for 8GB VRAM
         device=0,
-        project="F:/Claude_Projects/baseball-biomechanics/models",
+        project=str(Path(__file__).resolve().parents[1] / "models"),
         name="yolo_mitt_diverse",
         exist_ok=True,
         patience=20,
@@ -207,7 +207,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Train YOLO on diverse dataset")
-    parser.add_argument("--project-dir", default="F:/Claude_Projects/baseball-biomechanics")
+    parser.add_argument("--project-dir", default=str(Path(__file__).resolve().parents[1]))
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--model", default="s", choices=["n", "s", "m"])
     parser.add_argument("--convert-only", action="store_true")

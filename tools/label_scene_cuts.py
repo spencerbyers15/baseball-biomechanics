@@ -40,7 +40,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 METADATA_PATH = PROJECT_ROOT / "data/pitcher_calibration_metadata.json"

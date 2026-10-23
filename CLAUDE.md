@@ -80,29 +80,19 @@ git's ownership safety check.
 Capture migration to Nellie is DONE (2026-08-09) — the Mac no longer runs
 any capture daemon. `fieldvision/MIGRATE_TO_NELLY.md` is historical.
 
-## Running Python on Windows
+## Running Python
 
-1. Use the full path to the conda Python executable:
-   ```
-   C:/Users/Spencer/anaconda3/envs/baseball/python.exe
-   ```
-
-2. Use forward slashes for all paths, not backslashes:
-   - YES: `F:/Claude_Projects/baseball-biomechanics`
-   - NO: `F:\Claude_Projects\baseball-biomechanics`
-
-3. Example command to run scripts:
-   ```bash
-   C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/demo_pipeline.py
-   ```
+Run scripts from the project root with the `baseball` env's Python:
+```bash
+python tools/demo_pipeline.py
+```
 
 ## File Paths
 
 - Always use relative paths from the project root, not absolute paths
 - YES: `tools/demo_pipeline.py`, `PROGRESS.md`
 - NO: `F:/Claude_Projects/baseball-biomechanics/tools/demo_pipeline.py`
-
-This fixes file read/write tool issues.
+- Scripts locate the repo with `Path(__file__).resolve().parents[N]`; never hardcode a machine-specific root
 
 ## Project Structure
 
@@ -144,24 +134,24 @@ This is a general-purpose tool that scrubs videos, lets the user set a start/end
 
 **Interactive mode** (prompts for what to label, how many videos, frames per video):
 ```
-C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py
+python tools/frame_extractor.py
 ```
 
 **CLI mode** (skip prompts):
 ```
-C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py --name ball --count 60 --frames 10
-C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py --name mitt --count 30 --frames 15
+python tools/frame_extractor.py --name ball --count 60 --frames 10
+python tools/frame_extractor.py --name mitt --count 30 --frames 15
 ```
 
 **Custom video sources** (instead of calibration pool):
 ```
-C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py --videos path1.mp4 path2.mp4 --name ball
-C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py --dir data/videos/some_folder --name bat_barrel
+python tools/frame_extractor.py --videos path1.mp4 path2.mp4 --name ball
+python tools/frame_extractor.py --dir data/videos/some_folder --name bat_barrel
 ```
 
 **Re-run specific videos**:
 ```
-C:/Users/Spencer/anaconda3/envs/baseball/python.exe tools/frame_extractor.py --name ball --count 60 --redo VIDEO_ID
+python tools/frame_extractor.py --name ball --count 60 --redo VIDEO_ID
 ```
 
 - Default video source: 1744 cropped calibration videos, sampled balanced by stadium + LHP/RHP

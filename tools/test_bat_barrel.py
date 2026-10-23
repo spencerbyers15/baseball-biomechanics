@@ -20,7 +20,7 @@ import cv2
 import numpy as np
 from pathlib import Path
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MODEL_WEIGHTS = PROJECT_ROOT / "models/yolo_bat_barrel/train/weights/best.pt"
 
 # Keypoint visualization

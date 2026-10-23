@@ -200,7 +200,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Scrape diverse MLB stadium dataset")
-    parser.add_argument("--project-dir", default="F:/Claude_Projects/baseball-biomechanics")
+    parser.add_argument("--project-dir", default=str(Path(__file__).resolve().parents[1]))
     parser.add_argument("--videos-per-stadium", type=int, default=10)
     parser.add_argument("--frames-per-video", type=int, default=2)
     parser.add_argument("--start-date", default="2024-04-01")

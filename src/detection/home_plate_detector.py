@@ -43,7 +43,7 @@ class HomePlateDetector:
 
     def __init__(
         self,
-        cache_dir: str = "F:/hf_cache",
+        cache_dir: Optional[str] = None,
         text_prompt: str = "home plate",
         confidence_threshold: float = 0.3,
     ):

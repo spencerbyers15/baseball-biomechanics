@@ -604,7 +604,7 @@ def main():
     parser.add_argument("--append", action="store_true",
                        help="Append to existing frames")
     parser.add_argument("--project", type=str,
-                       default="F:/Claude_Projects/baseball-biomechanics",
+                       default=str(Path(__file__).resolve().parents[1]),
                        help="Project directory")
     args = parser.parse_args()
 

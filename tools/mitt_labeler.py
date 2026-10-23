@@ -522,7 +522,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="Catcher's Mitt Labeler")
-    parser.add_argument("--project-dir", default="F:/Claude_Projects/baseball-biomechanics")
+    parser.add_argument("--project-dir", default=str(Path(__file__).resolve().parents[1]))
     parser.add_argument("--extract", action="store_true", help="Extract new frames")
     parser.add_argument("--append", action="store_true", help="Append to existing frames")
     parser.add_argument("--num-frames", type=int, default=15)

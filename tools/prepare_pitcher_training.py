@@ -30,7 +30,7 @@ import random
 import shutil
 from pathlib import Path
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CROPS_DIR = PROJECT_ROOT / "data/labels/pitcher/crops"
 DEFAULT_LABELS_PATH = PROJECT_ROOT / "data/labels/pitcher/pitcher_labels.json"
 DEFAULT_METADATA_PATH = PROJECT_ROOT / "data/labels/pitcher/crop_metadata.json"

@@ -19,7 +19,7 @@ from torchvision import transforms, models
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = Path("F:/Claude_Projects/baseball-biomechanics")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MULTI_MODEL_PATH = PROJECT_ROOT / "models/player_classifier/best.pt"
 BINARY_MODEL_PATH = PROJECT_ROOT / "models/pitcher_classifier/best.pt"
 
