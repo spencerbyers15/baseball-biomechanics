@@ -6,11 +6,15 @@ Converts annotations and trains the model.
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 
 import cv2
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.paths import PROJECT_ROOT, resolve_repo_path
+
+RUN_NAME = "yolo_mitt_diverse"
 
 
 def convert_to_yolo_format(frames_dir: str, output_dir: str):
@@ -47,7 +51,7 @@ def convert_to_yolo_format(frames_dir: str, output_dir: str):
 
     def process_frames(frames, split):
         for idx, (frame_info, frame_id, boxes) in enumerate(frames):
-            img_path = Path(frame_info["path"])
+            img_path = resolve_repo_path(frame_info["path"])
             if not img_path.exists():
                 print(f"  Warning: Image not found: {img_path}")
                 continue
@@ -100,9 +104,8 @@ names:
     return str(yaml_path)
 
 
-def train_yolo(yaml_path: str, project_dir: Path, epochs: int = 100, model_size: str = "s"):
-    """Train YOLOv8 on the diverse dataset."""
-    import torch
+def train_yolo(yaml_path: str, project_dir: Path, epochs: int = 100, model_size: str = "s") -> Path:
+    """Train YOLOv8 on the diverse dataset. Returns the best.pt path."""
     from ultralytics import YOLO
 
     model_name = f"yolov8{model_size}.pt"
@@ -115,16 +118,15 @@ def train_yolo(yaml_path: str, project_dir: Path, epochs: int = 100, model_size:
         epochs=epochs,
         imgsz=640,
         batch=8,  # Good for 8GB VRAM
-        device=0 if torch.cuda.is_available() else "cpu",
         project=str(project_dir / "models"),
-        name="yolo_mitt_diverse",
+        name=RUN_NAME,
         exist_ok=True,
         patience=20,
         save=True,
         plots=True,
     )
 
-    return results
+    return Path(model.trainer.save_dir) / "weights" / "best.pt"
 
 
 def test_model(model_path: str, test_dir: str, output_dir: str):
@@ -222,7 +224,7 @@ def main():
     yolo_dir = project_dir / "data" / "yolo_diverse"
 
     if args.test_only:
-        model_path = project_dir / "models" / "yolo_mitt_diverse" / "weights" / "best.pt"
+        model_path = project_dir / "models" / RUN_NAME / "weights" / "best.pt"
         test_dir = yolo_dir / "images" / "val"
         output_dir = project_dir / "data" / "debug" / "yolo_diverse_results"
         test_model(str(model_path), str(test_dir), str(output_dir))
@@ -235,10 +237,9 @@ def main():
         return
 
     # Train
-    train_yolo(yaml_path, project_dir, epochs=args.epochs, model_size=args.model)
+    model_path = train_yolo(yaml_path, project_dir, epochs=args.epochs, model_size=args.model)
 
     # Test
-    model_path = project_dir / "models" / "yolo_mitt_diverse" / "weights" / "best.pt"
     test_dir = yolo_dir / "images" / "val"
     output_dir = project_dir / "data" / "debug" / "yolo_diverse_results"
     test_model(str(model_path), str(test_dir), str(output_dir))

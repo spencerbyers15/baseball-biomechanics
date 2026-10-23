@@ -19,6 +19,8 @@ import warnings
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Tuple
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.paths import resolve_repo_path, to_repo_relative
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -133,7 +135,8 @@ class MittLabeler:
 
         # Save frame info
         with open(self.output_dir / "frames_info.json", "w") as f:
-            json.dump(self.frames, f, indent=2)
+            json.dump([{**fr, "path": to_repo_relative(fr["path"])} for fr in self.frames],
+                      f, indent=2)
 
         print(f"\nExtracted {len(self.frames)} frames to {self.output_dir / 'frames'}")
 
@@ -145,6 +148,8 @@ class MittLabeler:
         if frames_info.exists():
             with open(frames_info) as f:
                 self.frames = json.load(f)
+            for fr in self.frames:
+                fr["path"] = str(resolve_repo_path(fr["path"]))
             print(f"Loaded {len(self.frames)} frames")
 
         if annotations_file.exists():
@@ -190,7 +195,7 @@ class MittLabeler:
             h, w = frame.shape[:2]
 
             entry = {
-                "image_path": frame_info["path"],
+                "image_path": to_repo_relative(frame_info["path"]),
                 "image_size": [w, h],
                 "positive_boxes": [],
                 "negative_boxes": [],
