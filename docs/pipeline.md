@@ -353,6 +353,8 @@ python tools/demo_full_pipeline.py --skip-home-plate  # random video, no SAM3
 
 ## Environment
 
+The original CV workstation where these models were trained (run commands with your own `baseball` env's `python` elsewhere):
+
 - **OS**: Windows 10
 - **GPU**: RTX 2070 with CUDA
 - **Python**: Anaconda env `baseball` (`C:/Users/Spencer/anaconda3/envs/baseball/python.exe`)

@@ -93,6 +93,7 @@ python tools/demo_pipeline.py
 - YES: `tools/demo_pipeline.py`, `PROGRESS.md`
 - NO: `F:/Claude_Projects/baseball-biomechanics/tools/demo_pipeline.py`
 - Scripts locate the repo with `Path(__file__).resolve().parents[N]`; never hardcode a machine-specific root
+- SAM3 weights (several GB) download to the Hugging Face cache, `~/.cache/huggingface` by default. On a machine with a small home partition, set `HF_HOME` to a large disk before running SAM3 tools
 
 ## Project Structure
 
