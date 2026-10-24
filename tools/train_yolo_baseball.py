@@ -123,7 +123,8 @@ def train(epochs: int = 100, batch: int = 8, imgsz: int = 640,
         create_train_val_split(DATA_DIR)
     else:
         print("Skipping split (using existing)")
-        if not (DATA_DIR / "images" / "train").is_dir():
+        split_dirs = [DATA_DIR / kind / split for kind in ("images", "labels") for split in ("train", "val")]
+        if not all(d.is_dir() for d in split_dirs):
             print(f"Error: no train/val split in {DATA_DIR / 'images'}.")
             print("Run without --skip-split, or run baseball_labeler.py first.")
             return

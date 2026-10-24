@@ -62,3 +62,40 @@ def test_entry_helpers_round_trip(tmp_path):
     saved = portable_entries(entries, ("path", "source_video"), tmp_path)
     assert [e["path"] for e in saved] == ["data/f/a.png", "data/f/b.png"]
     assert entries[0]["path"] == str(tmp_path / "data/f/a.png")  # originals untouched
+
+
+def test_live_path_in_another_checkout_stays_absolute(tmp_path):
+    root = tmp_path / "wt" / "baseball-biomechanics"
+    other = tmp_path / "main" / "baseball-biomechanics" / "data" / "x.jpg"
+    assert to_repo_relative(other, root) == str(other)
+
+
+def test_windows_path_already_in_windows_root_is_unchanged():
+    root = r"F:\r\baseball-biomechanics\.claude\worktrees\feat"
+    live = root + r"\data\a.jpg"
+    assert str(resolve_repo_path(live, root)) == live
+
+
+def test_repo_name_match_is_case_insensitive():
+    stored = r"F:\Claude_Projects\Baseball-Biomechanics\data\x.png"
+    assert resolve_repo_path(stored) == PROJECT_ROOT / "data/x.png"
+
+
+def test_other_machine_worktree_path_is_rerooted_past_worktree(tmp_path):
+    stored = "/other/baseball-biomechanics/.claude/worktrees/feat/data/a.jpg"
+    assert resolve_repo_path(stored, tmp_path) == tmp_path / "data/a.jpg"
+
+
+def test_relative_input_is_cwd_relative_for_both_slash_styles(tmp_path, monkeypatch):
+    (tmp_path / "tools").mkdir()
+    monkeypatch.chdir(tmp_path / "tools")
+    assert to_repo_relative("../data/f/a.png", tmp_path) == "data/f/a.png"
+    assert to_repo_relative(r"..\data\f\a.png", tmp_path) == "data/f/a.png"
+
+
+def test_symlinked_ancestor_still_counts_as_in_repo(tmp_path):
+    real = tmp_path / "real" / "baseball-biomechanics"
+    (real / "data").mkdir(parents=True)
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    via_link = tmp_path / "link" / "baseball-biomechanics" / "data" / "a.jpg"
+    assert to_repo_relative(via_link, real) == "data/a.jpg"

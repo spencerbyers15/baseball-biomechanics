@@ -11,8 +11,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from mitt_labeler import FRAME_PATH_KEYS, MittLabeler
-from src.paths import resolve_entries
+from mitt_labeler import MittLabeler
+from src.paths import FRAME_PATH_KEYS, resolve_entries
 
 
 def main():

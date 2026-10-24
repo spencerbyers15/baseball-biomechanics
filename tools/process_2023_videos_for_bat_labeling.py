@@ -176,7 +176,7 @@ def main():
         # Save results
         results_path = CROPPED_DIR / "crop_results.json"
         with open(results_path, "w") as f:
-            json.dump(crop_results, f, indent=2)
+            json.dump(portable_entries(crop_results, ("output_path",)), f, indent=2)
         print(f"Results saved to: {results_path}")
 
     # Phase 2: Extract frames
@@ -216,7 +216,7 @@ def main():
         # Save frames info
         frames_info_path = FRAMES_DIR / "frames_info.json"
         with open(frames_info_path, "w") as f:
-            json.dump(portable_entries(frames_info, ("path",)), f, indent=2)
+            json.dump(portable_entries(frames_info), f, indent=2)
 
         print(f"\n{'='*60}")
         print("COMPLETE!")

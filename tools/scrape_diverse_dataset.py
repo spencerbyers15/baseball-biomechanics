@@ -343,7 +343,7 @@ def main():
     # Save frames info for labeling
     frames_info_path = frames_dir / "frames_info.json"
     with open(frames_info_path, "w") as f:
-        json.dump(portable_entries(frames_info, ("path",), project_dir), f, indent=2)
+        json.dump(portable_entries(frames_info, root=project_dir), f, indent=2)
 
     print(f"\n{'='*60}")
     print(f"COMPLETE!")

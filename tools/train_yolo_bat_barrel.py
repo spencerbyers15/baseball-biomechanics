@@ -87,6 +87,7 @@ def create_train_val_split(labels_dir: Path, val_ratio: float = 0.2, seed: int =
 
 def update_data_yaml(labels_dir: Path, model_dir: Path):
     """Update data.yaml with correct paths."""
+    model_dir.mkdir(parents=True, exist_ok=True)
     yaml_path = model_dir / "data.yaml"
 
     content = f"""# YOLOv8 Pose Dataset Configuration for Bat Barrel Detection

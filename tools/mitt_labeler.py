@@ -20,10 +20,7 @@ from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Tuple
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.paths import portable_entries, resolve_entries, to_repo_relative
-
-# Path-valued keys in frames_info.json entries
-FRAME_PATH_KEYS = ("path", "source_video")
+from src.paths import FRAME_PATH_KEYS, portable_entries, resolve_entries, to_repo_relative
 import tkinter as tk
 from tkinter import ttk, messagebox
 

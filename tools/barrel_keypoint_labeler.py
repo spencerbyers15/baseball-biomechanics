@@ -36,12 +36,11 @@ from pathlib import Path
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Tuple, Dict
-import os
 import shutil
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.paths import PROJECT_ROOT, portable_entries, resolve_entries, resolve_repo_path, to_repo_relative
+from src.paths import PROJECT_ROOT, resolve_repo_path, to_repo_relative
 DEFAULT_FRAMES_DIR = PROJECT_ROOT / "data/bat_frames_round2_filtered"
 DEFAULT_OUTPUT_DIR = PROJECT_ROOT / "data/labels/bat_barrel"
 
@@ -112,8 +111,6 @@ class BarrelLabeler:
     """Interactive labeling tool for bat barrel keypoints."""
 
     def __init__(self, frames_dir: Path, output_dir: Path):
-        # Absolute, so globbed frame keys match the re-rooted annotation keys
-        frames_dir = Path(os.path.abspath(frames_dir))
         self.frames_dir = frames_dir
         self.output_dir = output_dir
         self.labels_dir = output_dir / "labels"
@@ -153,8 +150,9 @@ class BarrelLabeler:
             with open(self.annotations_file, "r") as f:
                 data = json.load(f)
                 for stored_path, ann_dict in data.get("annotations", {}).items():
-                    # Keys are re-rooted so they match this machine's frame paths
-                    path = str(resolve_repo_path(stored_path))
+                    # Keys are repo-relative, so they match _frame_key() however
+                    # --frames-dir was spelled (relative, symlinked, or old F:\ paths)
+                    path = self._frame_key(resolve_repo_path(stored_path))
                     # Convert keypoints back to tuples
                     kps = ann_dict.get("keypoints", [None, None, None])
                     kps = [tuple(kp) if kp else None for kp in kps]
@@ -171,7 +169,8 @@ class BarrelLabeler:
         if self.flagged_file.exists():
             with open(self.flagged_file, "r") as f:
                 self.flagged_frames = json.load(f).get("flagged", [])
-            resolve_entries(self.flagged_frames, ("frame_path",))
+            for entry in self.flagged_frames:
+                entry["frame_path"] = self._frame_key(resolve_repo_path(entry["frame_path"]))
 
         labeled = sum(1 for a in self.annotations.values() if a.status == "labeled")
         skipped = sum(1 for a in self.annotations.values() if a.status == "skipped")
@@ -181,10 +180,15 @@ class BarrelLabeler:
     def _find_next_unlabeled(self) -> int:
         """Find the first unlabeled frame."""
         for i, frame in enumerate(self.frames):
-            path_str = str(frame)
+            path_str = self._frame_key(frame)
             if path_str not in self.annotations or self.annotations[path_str].status == "unlabeled":
                 return i
         return 0
+
+    @staticmethod
+    def _frame_key(frame_path) -> str:
+        """Annotation key for a frame: its path relative to the repo."""
+        return to_repo_relative(frame_path)
 
     def _parse_frame_metadata(self, frame_path: Path) -> dict:
         """Extract metadata from frame filename."""
@@ -221,9 +225,7 @@ class BarrelLabeler:
             ann_data = asdict(ann)
             # Convert tuples to lists for JSON
             ann_data["keypoints"] = [list(kp) if kp else None for kp in ann.keypoints]
-            rel = to_repo_relative(path)
-            ann_data["frame_path"] = rel
-            ann_dict[rel] = ann_data
+            ann_dict[path] = ann_data
 
         data = {
             "metadata": {
@@ -248,7 +250,7 @@ class BarrelLabeler:
                 "description": "Frames flagged as wrong camera angle for debugging",
                 "created": datetime.now().isoformat(),
             },
-            "flagged": portable_entries(self.flagged_frames, ("frame_path",))
+            "flagged": self.flagged_frames
         }
         with open(self.flagged_file, "w") as f:
             json.dump(flagged_data, f, indent=2)
@@ -260,7 +262,7 @@ class BarrelLabeler:
         count = 0
         for path, ann in self.annotations.items():
             if ann.status == "labeled" and ann.is_complete():
-                frame_path = Path(path)
+                frame_path = resolve_repo_path(path)
 
                 # Read image to get dimensions
                 img = cv2.imread(str(frame_path))
@@ -451,7 +453,7 @@ class BarrelLabeler:
         self.img_height, self.img_width = self.img_original.shape[:2]
 
         # Get or create annotation
-        path_str = str(frame_path)
+        path_str = self._frame_key(frame_path)
         if path_str in self.annotations:
             self.current_annotation = self.annotations[path_str]
         else:
