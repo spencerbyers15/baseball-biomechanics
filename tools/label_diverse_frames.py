@@ -9,8 +9,10 @@ from pathlib import Path
 
 # Add tools directory to path
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from mitt_labeler import MittLabeler
+from src.paths import FRAME_PATH_KEYS, resolve_entries
 
 
 def main():
@@ -26,6 +28,7 @@ def main():
     if frames_info_path.exists():
         with open(frames_info_path) as f:
             labeler.frames = json.load(f)
+        resolve_entries(labeler.frames, FRAME_PATH_KEYS, project_dir)
 
         # Add IDs if missing
         for i, frame in enumerate(labeler.frames):

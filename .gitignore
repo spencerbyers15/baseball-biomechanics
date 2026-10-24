@@ -92,3 +92,7 @@ fieldvision/scheduler.log
 fieldvision/.fv_token.txt
 fieldvision/.fv_captures/
 fieldvision/.mlb_profile/
+
+# Generated YOLO dataset configs (machine-specific absolute paths)
+data/labels/baseball/yolo/data.yaml
+models/yolo_bat_barrel/data.yaml

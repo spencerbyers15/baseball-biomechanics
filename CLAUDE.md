@@ -92,7 +92,9 @@ python tools/demo_pipeline.py
 - Always use relative paths from the project root, not absolute paths
 - YES: `tools/demo_pipeline.py`, `PROGRESS.md`
 - NO: `F:/Claude_Projects/baseball-biomechanics/tools/demo_pipeline.py`
-- Scripts locate the repo with `Path(__file__).resolve().parents[N]`; never hardcode a machine-specific root
+- Scripts locate the repo with `Path(__file__).resolve().parents[N]` (or import `PROJECT_ROOT` from `src.paths`); never hardcode a machine-specific root
+- Paths stored in label JSONs: read them through `src.paths.resolve_repo_path` / `resolve_entries` (handles old `F:\...` entries) and write them with `to_repo_relative` / `portable_entries`. Pass `root=` when a tool takes `--project-dir`
+- Generated YOLO `data.yaml` files are gitignored; the training scripts rewrite them with this machine's paths on every run
 - SAM3 weights (several GB) download to the Hugging Face cache, `~/.cache/huggingface` by default. On a machine with a small home partition, set `HF_HOME` to a large disk before running SAM3 tools
 
 ## Project Structure

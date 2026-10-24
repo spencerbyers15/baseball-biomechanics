@@ -30,6 +30,8 @@ import warnings
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Tuple, Set
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from src.paths import FRAME_PATH_KEYS, portable_entries, resolve_entries
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -162,7 +164,8 @@ class BaseballLabeler:
                 print(f"  [{i+1}/{len(selected_videos)}] extracted...")
 
         with open(self.output_dir / "frames_info.json", "w") as f:
-            json.dump(self.frames, f, indent=2)
+            json.dump(portable_entries(self.frames, FRAME_PATH_KEYS, self.project_dir),
+                      f, indent=2)
 
         print(f"Extracted {len(self.frames)} frames to {self.output_dir / 'frames'}")
 
@@ -174,6 +177,7 @@ class BaseballLabeler:
         if frames_info.exists():
             with open(frames_info) as f:
                 self.frames = json.load(f)
+            resolve_entries(self.frames, FRAME_PATH_KEYS, self.project_dir)
             print(f"Loaded {len(self.frames)} frames")
 
         if annotations_file.exists():

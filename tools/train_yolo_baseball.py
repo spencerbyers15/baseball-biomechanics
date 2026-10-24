@@ -27,11 +27,10 @@ def create_train_val_split(yolo_dir: Path, val_ratio: float = 0.2, seed: int = 4
 
     # Get all images with corresponding labels
     all_images = list(images_dir.glob("*.png")) + list(images_dir.glob("*.jpg"))
-    # Filter out images already in train/val subdirs
+    # glob is non-recursive, so images already in train/val subdirs are excluded
     labeled_images = [
         img for img in all_images
         if (labels_dir / (img.stem + ".txt")).exists()
-        and "train" not in str(img) and "val" not in str(img)
     ]
 
     if not labeled_images:
@@ -124,12 +123,13 @@ def train(epochs: int = 100, batch: int = 8, imgsz: int = 640,
         create_train_val_split(DATA_DIR)
     else:
         print("Skipping split (using existing)")
-        if not data_yaml.exists():
-            print(f"Error: {data_yaml} not found.")
-            print("Run baseball_labeler.py first, label some frames, and save.")
+        split_dirs = [DATA_DIR / kind / split for kind in ("images", "labels") for split in ("train", "val")]
+        if not all(d.is_dir() for d in split_dirs):
+            print(f"Error: no train/val split in {DATA_DIR / 'images'}.")
+            print("Run without --skip-split, or run baseball_labeler.py first.")
             return
 
-    # Always rewrite: the committed data.yaml's path may be from another machine
+    # Always rewrite: data.yaml holds this machine's absolute dataset path
     print("\n[2/3] Updating data.yaml...")
     update_data_yaml(DATA_DIR)
 
