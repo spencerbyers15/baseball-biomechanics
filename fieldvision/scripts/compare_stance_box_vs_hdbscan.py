@@ -15,6 +15,7 @@ intuition matches the data-driven HDBSCAN noise rejection.
 
 from __future__ import annotations
 
+import os
 import pickle
 import sys
 from pathlib import Path

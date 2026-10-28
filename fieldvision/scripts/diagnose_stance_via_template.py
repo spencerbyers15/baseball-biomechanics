@@ -15,6 +15,7 @@ signature — a single threshold on this signal gives us a clean filter.
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
