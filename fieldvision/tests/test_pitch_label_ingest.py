@@ -2,13 +2,15 @@
 import sys
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 # Make scripts/ importable
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from ingest_pitch_labels import feed_to_rows, write_pitch_labels
+from ingest_pitch_labels import _SCHEMA, feed_to_rows, write_pitch_labels
 
 
 def _ingest(game_pk: int, data_dir: Path, feed: dict) -> tuple[int, list[dict]]:
@@ -129,10 +131,6 @@ def test_reingest_is_idempotent(tmp_path: Path):
 
 def test_merges_an_old_file_with_reordered_columns_and_narrow_ints(tmp_path: Path):
     """Files migrated from SQLite may differ from the canonical schema."""
-    import pyarrow as pa
-    import pyarrow.compute as pc
-    from ingest_pitch_labels import _SCHEMA
-
     game_pk = 999904
     _ingest(game_pk, tmp_path, _pitch_feed(("p1", "FF")))
     path = tmp_path / str(game_pk) / "pitch_labels.parquet"
