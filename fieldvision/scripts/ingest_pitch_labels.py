@@ -164,9 +164,11 @@ def write_pitch_labels(game_pk: int, data_dir: Path, rows: list[dict]) -> int:
     new_table = pa.Table.from_pylist(rows, schema=_SCHEMA)
     if out_path.exists():
         old = pq.read_table(out_path)
-        # Reorder/coerce old to match our canonical schema (handles minor
-        # type drift from the migration's COPY).
-        old = old.cast(_SCHEMA, safe=False) if old.schema != _SCHEMA else old
+        # Reorder and coerce old to match our canonical schema (handles column
+        # order and minor type drift from the migration's COPY). `cast` alone
+        # does not reorder: it needs the field names in schema order.
+        if old.schema != _SCHEMA:
+            old = old.select(_SCHEMA.names).cast(_SCHEMA, safe=False)
         new_ids = set(rows[i]["play_id"] for i in range(len(rows)))
         if new_ids:
             mask = [pid not in new_ids for pid in old.column("play_id").to_pylist()]

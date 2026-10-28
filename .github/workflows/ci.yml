@@ -35,7 +35,7 @@ jobs:
         run: pip install -r fieldvision/requirements.txt ruff==0.17.3
       # Syntax errors and undefined names only.
       - name: Ruff
-        run: ruff check --select E9,F63,F7,F82 --output-format=github .
+        run: ruff check --select E9,F63,F7,F82 --target-version py312 --output-format=github .
       - name: Pytest (tests/)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pytest tests -q

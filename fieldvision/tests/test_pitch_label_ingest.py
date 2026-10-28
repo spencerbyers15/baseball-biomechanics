@@ -2,13 +2,15 @@
 import sys
 from pathlib import Path
 
+import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 
 # Make scripts/ importable
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from ingest_pitch_labels import feed_to_rows, write_pitch_labels
+from ingest_pitch_labels import _SCHEMA, feed_to_rows, write_pitch_labels
 
 
 def _ingest(game_pk: int, data_dir: Path, feed: dict) -> tuple[int, list[dict]]:
@@ -91,3 +93,51 @@ def test_ingest_skips_non_pitch_events(tmp_path: Path):
     n, rows = _ingest(game_pk, tmp_path, feed)
     assert n == 1
     assert [r["play_id"] for r in rows] == ["real-pitch-uuid"]
+
+
+def _pitch_feed(*pitches: tuple[str, str]) -> dict:
+    """A one-at-bat feed with one pitch per (play_id, pitch_type) pair."""
+    return {
+        "liveData": {"plays": {"allPlays": [{
+            "atBatIndex": 0,
+            "about": {"inning": 1, "halfInning": "top"},
+            "matchup": {"batter": {"id": 1}, "pitcher": {"id": 2}},
+            "playEvents": [
+                {"isPitch": True, "playId": pid, "details": {"type": {"code": code}}}
+                for pid, code in pitches
+            ],
+        }]}}
+    }
+
+
+def test_reingest_replaces_rows_by_play_id(tmp_path: Path):
+    game_pk = 999902
+    _ingest(game_pk, tmp_path, _pitch_feed(("p1", "FF"), ("p2", "SL")))
+    # p2 is re-classified and p3 is new; p1 isn't in this pull and must survive.
+    n, rows = _ingest(game_pk, tmp_path, _pitch_feed(("p2", "CH"), ("p3", "CU")))
+    assert n == 2
+    by_id = {r["play_id"]: r["pitch_type"] for r in rows}
+    assert len(rows) == 3, "a re-ingested pitch was duplicated"
+    assert by_id == {"p1": "FF", "p2": "CH", "p3": "CU"}
+
+
+def test_reingest_is_idempotent(tmp_path: Path):
+    game_pk = 999903
+    feed = _pitch_feed(("p1", "FF"), ("p2", "SL"))
+    _ingest(game_pk, tmp_path, feed)
+    _, rows = _ingest(game_pk, tmp_path, feed)
+    assert sorted(r["play_id"] for r in rows) == ["p1", "p2"]
+
+
+def test_merges_an_old_file_with_reordered_columns_and_narrow_ints(tmp_path: Path):
+    """Files migrated from SQLite may differ from the canonical schema."""
+    game_pk = 999904
+    _ingest(game_pk, tmp_path, _pitch_feed(("p1", "FF")))
+    path = tmp_path / str(game_pk) / "pitch_labels.parquet"
+    old = pq.read_table(path)
+    old = old.set_column(0, "game_pk", pc.cast(old.column("game_pk"), pa.int32()))
+    pq.write_table(old.select(list(reversed(old.schema.names))), path)
+
+    _, rows = _ingest(game_pk, tmp_path, _pitch_feed(("p2", "SL")))
+    assert sorted(r["play_id"] for r in rows) == ["p1", "p2"]
+    assert pq.read_table(path).schema == _SCHEMA
