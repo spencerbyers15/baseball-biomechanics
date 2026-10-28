@@ -12,6 +12,7 @@ Renders a comparison panel and prints per-method cluster + noise counts.
 
 from __future__ import annotations
 
+import os
 import pickle
 import sys
 from pathlib import Path
