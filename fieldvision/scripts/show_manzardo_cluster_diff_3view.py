@@ -6,6 +6,7 @@ is hidden in a single side-view projection.
 
 from __future__ import annotations
 
+import os
 import pickle
 import sys
 from pathlib import Path

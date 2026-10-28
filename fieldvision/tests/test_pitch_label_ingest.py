@@ -1,18 +1,24 @@
-"""Test that ingest_pitch_labels populates pitch_label rows from a statsapi feed."""
+"""Test that ingest_pitch_labels writes pitch_labels.parquet rows from a statsapi feed."""
 import sys
 from pathlib import Path
+
+import pyarrow.parquet as pq
 
 # Make scripts/ importable
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from fieldvision.storage import open_game_db, transaction
-from ingest_pitch_labels import ingest_feed_dict
+from ingest_pitch_labels import feed_to_rows, write_pitch_labels
+
+
+def _ingest(game_pk: int, data_dir: Path, feed: dict) -> tuple[int, list[dict]]:
+    n = write_pitch_labels(game_pk, data_dir, feed_to_rows(game_pk, feed))
+    rows = pq.read_table(data_dir / str(game_pk) / "pitch_labels.parquet").to_pylist()
+    return n, rows
 
 
 def test_ingest_pitch_label_from_minimal_feed(tmp_path: Path):
     game_pk = 999900
-    conn = open_game_db(game_pk, tmp_path)
     feed = {
         "liveData": {"plays": {"allPlays": [{
             "atBatIndex": 5,
@@ -46,40 +52,30 @@ def test_ingest_pitch_label_from_minimal_feed(tmp_path: Path):
             }],
         }]}}
     }
-    with transaction(conn):
-        n = ingest_feed_dict(conn, game_pk, feed)
+    n, rows = _ingest(game_pk, tmp_path, feed)
     assert n == 1
-    row = conn.execute(
-        "SELECT pitch_type, start_speed, batter_id, pitcher_id, "
-        "balls_before, strikes_before, start_time_unix, "
-        "release_x, release_y, release_z, plate_x, plate_z, "
-        "sz_top, sz_bot, result_call, is_strike "
-        "FROM pitch_label WHERE play_id='abc12345-aaaa-bbbb-cccc-111122223333'"
-    ).fetchone()
-    assert row is not None, "row not inserted"
-    pitch_type, start_speed, batter_id, pitcher_id, balls_before, strikes_before, start_time_unix, \
-        release_x, release_y, release_z, plate_x, plate_z, \
-        sz_top, sz_bot, result_call, is_strike = row
-    assert pitch_type == "FF"
-    assert abs(start_speed - 95.4) < 0.01
-    assert batter_id == 660271
-    assert pitcher_id == 543037
-    assert balls_before == 1 and strikes_before == 0
-    assert start_time_unix is not None and start_time_unix > 1.7e9  # post-2024
-    assert abs(release_x - (-1.5)) < 0.01
-    assert abs(release_y - 50.0) < 0.01
-    assert abs(release_z - 5.9) < 0.01
-    assert abs(plate_x - 0.2) < 0.01
-    assert abs(plate_z - 2.4) < 0.01
-    assert abs(sz_top - 3.5) < 0.01
-    assert abs(sz_bot - 1.6) < 0.01
-    assert result_call == "S"
-    assert is_strike == 1
+    matches = [r for r in rows if r["play_id"] == "abc12345-aaaa-bbbb-cccc-111122223333"]
+    assert len(matches) == 1, "row not inserted"
+    row = matches[0]
+    assert row["pitch_type"] == "FF"
+    assert abs(row["start_speed"] - 95.4) < 0.01
+    assert row["batter_id"] == 660271
+    assert row["pitcher_id"] == 543037
+    assert row["balls_before"] == 1 and row["strikes_before"] == 0
+    assert row["start_time_unix"] is not None and row["start_time_unix"] > 1.7e9  # post-2024
+    assert abs(row["release_x"] - (-1.5)) < 0.01
+    assert abs(row["release_y"] - 50.0) < 0.01
+    assert abs(row["release_z"] - 5.9) < 0.01
+    assert abs(row["plate_x"] - 0.2) < 0.01
+    assert abs(row["plate_z"] - 2.4) < 0.01
+    assert abs(row["sz_top"] - 3.5) < 0.01
+    assert abs(row["sz_bot"] - 1.6) < 0.01
+    assert row["result_call"] == "S"
+    assert row["is_strike"] == 1
 
 
 def test_ingest_skips_non_pitch_events(tmp_path: Path):
     game_pk = 999901
-    conn = open_game_db(game_pk, tmp_path)
     feed = {
         "liveData": {"plays": {"allPlays": [{
             "atBatIndex": 0,
@@ -92,8 +88,6 @@ def test_ingest_skips_non_pitch_events(tmp_path: Path):
             ],
         }]}}
     }
-    with transaction(conn):
-        n = ingest_feed_dict(conn, game_pk, feed)
+    n, rows = _ingest(game_pk, tmp_path, feed)
     assert n == 1
-    rows = conn.execute("SELECT play_id FROM pitch_label").fetchall()
-    assert rows == [("real-pitch-uuid",)]
+    assert [r["play_id"] for r in rows] == ["real-pitch-uuid"]
