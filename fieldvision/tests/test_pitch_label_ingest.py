@@ -54,7 +54,9 @@ def test_ingest_pitch_label_from_minimal_feed(tmp_path: Path):
     }
     n, rows = _ingest(game_pk, tmp_path, feed)
     assert n == 1
-    [row] = [r for r in rows if r["play_id"] == "abc12345-aaaa-bbbb-cccc-111122223333"]
+    matches = [r for r in rows if r["play_id"] == "abc12345-aaaa-bbbb-cccc-111122223333"]
+    assert len(matches) == 1, "row not inserted"
+    row = matches[0]
     assert row["pitch_type"] == "FF"
     assert abs(row["start_speed"] - 95.4) < 0.01
     assert row["batter_id"] == 660271
