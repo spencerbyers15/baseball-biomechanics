@@ -180,12 +180,41 @@ def live_slate() -> list[dict]:
         return []
 
 
+# A game is "completed" exactly when the autopilot writes its completion
+# marker, and each of those events logs one of these lines (via
+# fv_autopilot.log(), so they carry a full `YYYY-MM-DD HH:MM:SS` stamp).
+# Do NOT count `pk=N game done`: that fires on EVERY 5-min resume pass over an
+# already-finished game (verify passes fetching 0-2 segments), which inflated
+# the dashboard's completions/hour ~25x — 107 log lines for 3 real completions
+# in one sampled hour. See tests/test_dashboard_completions.py.
+_COMPLETION_RE = re.compile(
+    r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] "
+    r"(?:backlog|live) pk=\d+ "
+    r"(?:DONE |finalized \+ marked complete"
+    r"|EXPIRED from retention|no manifest after \d+)"
+)
+
+
+def completions_by_hour(log_text: str, now: datetime) -> Counter:
+    """Counter{hour_of_day: true completions} over the 24h ending at `now`."""
+    cutoff = now - timedelta(hours=24)
+    hours: Counter = Counter()
+    for m in _COMPLETION_RE.finditer(log_text):
+        try:
+            ts = datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+        if ts >= cutoff:
+            hours[ts.hour] += 1
+    return hours
+
+
 def gather() -> dict:
     now = datetime.now()
-    log_tail = sh(f"tail -c 400000 {LOG}")
-    hours = Counter()
-    for m in re.finditer(r"\[(\d{2}):\d{2}:\d{2}\]\s+pk=\d+ game done", log_tail):
-        hours[int(m.group(1))] += 1
+    # 2 MB of tail reliably spans >24h even during high-volume stretches (the
+    # completion lines are rare vs the per-pass chatter).
+    log_tail = sh(f"tail -c 2000000 {LOG}")
+    hours = completions_by_hour(log_tail, now)
     hourly = [{"h": h, "n": hours.get(h, 0)} for h in
               [(now.hour - 23 + i) % 24 for i in range(24)]]
 
