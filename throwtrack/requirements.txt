@@ -1,0 +1,9 @@
+# Core pipeline (pose tracks -> throws -> report). Enough for the demo and tests.
+numpy>=1.26
+pytest>=8
+
+# Video layer (python -m throwtrack analyze VIDEO). Needs a GPU for useful speed.
+# opencv-python>=4.8
+# ultralytics>=8.3
+# rtmlib            (install with --no-deps, as in the parent repo)
+# onnxruntime-gpu

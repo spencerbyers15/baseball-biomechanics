@@ -39,6 +39,12 @@ jobs:
       - name: Pytest (tests/)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pytest tests -q
+      # numpy + pytest only (both come with fieldvision's requirements); the video-layer
+      # tests skip themselves when OpenCV is not installed.
+      - name: Pytest (throwtrack/tests)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        working-directory: throwtrack
+        run: pytest tests -q
       # test_event_schemas.py and test_ingest_segment.py read capture files from
       # fieldvision/samples/, which is gitignored and only exists on the capture machines.
       - name: Pytest (fieldvision/tests)

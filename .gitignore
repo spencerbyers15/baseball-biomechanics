@@ -96,3 +96,6 @@ fieldvision/.mlb_profile/
 # Generated YOLO dataset configs (machine-specific absolute paths)
 data/labels/baseball/yolo/data.yaml
 models/yolo_bat_barrel/data.yaml
+
+# ThrowTrack demo / analysis outputs
+throwtrack/runs/
